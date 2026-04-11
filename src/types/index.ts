@@ -1,31 +1,57 @@
 export type Role = 'admin' | 'presidente_republica' | 'presidente_congresso' | 'deputado' | 'governador' | 'ministro' | 'ministro_tse' | 'stf' | 'espectador';
 
+export type MacroArea = 'educacao' | 'saude' | 'seguranca' | 'economia' | 'infraestrutura' | 'meio_ambiente';
+
+// A Árvore de Dados Fixa do Jogo
+export const TAXONOMY: Record<MacroArea, string[]> = {
+  educacao: ['Infantil', 'Fundamental', 'Médio', 'Superior', 'Profissionalizante'],
+  saude: ['Atenção Básica', 'Especializada', 'Urgência e Emergência', 'Vigilância Sanitária', 'Fármacos e Insumos'],
+  seguranca: ['Policiamento Ostensivo', 'Investigação', 'Sistema Prisional', 'Fronteiras', 'Inteligência'],
+  economia: ['Geração de Emprego', 'Indústria', 'Comércio', 'Agropecuária', 'Serviços'],
+  infraestrutura: ['Rodovias', 'Saneamento Básico', 'Matriz Energética', 'Habitação', 'Telecomunicações'],
+  meio_ambiente: ['Conservação', 'Fiscalização', 'Gestão de Resíduos', 'Recursos Hídricos', 'Prevenção Climática']
+};
+
 export interface UserProfile {
-  id: string; discordUsername: string; role: Role; jurisdictionId?: string; pastaId?: string;
+  id: string; discordUsername: string; role: Role; jurisdictionId?: string; pastaId?: MacroArea | string;
 }
 
 export interface RpgData {
-  id: string; type: 'federal' | 'estadual'; name: string; totalBudget: number;
-  dynamicPastas: Record<string, { orcamento: number; dados: number }>;
+  id: string; type: 'federal' | 'estadual'; name: string; 
+  macro: { populacao: number; pib: number; aprovacao: number; caixa: number; };
+  // Estrutura Fixa: macroArea -> { microArea: valor (0-100) }
+  indicators: Record<string, Record<string, number>>;
+  // Orçamento por Macro Área
+  allocatedBudget: Record<string, number>;
 }
 
-export interface DocTemplate {
-  id: string; branch: 'legislativo' | 'executivo' | 'judiciario';
-  name: string; abbreviation: string; isBudget: boolean; bodyText: string;
+export interface GameTime { month: number; year: number; }
+
+export interface GameEffect {
+  id: string; sourceDocTitle: string; stateId: string; macro: string; micro: string;
+  pointsPerMonth: number; remainingMonths: number; isPositive: boolean;
 }
 
+export interface DocTemplate { id: string; branch: 'legislativo' | 'executivo' | 'judiciario'; name: string; abbreviation: string; isBudget: boolean; bodyText: string; }
 export interface LoaArticle { pastaName: string; percentage: number; }
+export interface ProjectArticle { id: number; text: string; isVetoed: boolean; }
 
-export interface RpgProject {
+export interface BaseDocument {
+  justificativa: string; intendedMacro: string; // NOVO: A intenção do jogador
+  apurado: boolean; // NOVO: Flag para o Admin saber se já julgou
+}
+
+export interface RpgProject extends BaseDocument {
   id: string; sequentialNumber: number; category: 'geral' | 'loa';
-  templateName?: string; templateAbbreviation?: string; // Ex: "PEC", "PLP"
+  templateName?: string; templateAbbreviation?: string; 
   loaDetails?: { stateId: string; artigos: LoaArticle[]; };
-  title: string; description: string; authorId: string; authorName: string;
-  status: 'proposto' | 'pauta' | 'votacao' | 'aprovado_congresso' | 'rejeitado' | 'sancionado' | 'vetado';
+  title: string; artigos: ProjectArticle[]; 
+  authorId: string; authorName: string;
+  status: 'proposto' | 'pauta' | 'votacao' | 'sancao' | 'sancionado' | 'vetado' | 'votacao_veto' | 'promulgado' | 'arquivo';
   votes: Record<string, 'sim' | 'nao' | 'abstencao'>; createdAt: any;
 }
 
-export interface RpgDecree {
+export interface RpgDecree extends BaseDocument {
   id: string; sequentialNumber: number; title: string; content: string;
   authorName: string; jurisdictionId: string; createdAt: any;
 }
