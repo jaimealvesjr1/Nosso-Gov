@@ -47,6 +47,7 @@ export interface RpgProject extends BaseDocument {
   loaDetails?: { stateId: string; artigos: LoaArticle[]; };
   title: string; artigos: ProjectArticle[]; 
   authorId: string; authorName: string;
+  amendments: ProjectAmendment[];
   status: 'proposto' | 'pauta' | 'votacao' | 'sancao' | 'sancionado' | 'vetado' | 'votacao_veto' | 'promulgado' | 'arquivo';
   votes: Record<string, 'sim' | 'nao' | 'abstencao'>; createdAt: any;
 }
@@ -54,7 +55,22 @@ export interface RpgProject extends BaseDocument {
 export interface RpgDecree extends BaseDocument {
   id: string; sequentialNumber: number; title: string; content: string;
   authorName: string; jurisdictionId: string; createdAt: any;
+  actions: DecreeAction[];
 }
 
 export interface RpgEvent { id: string; title: string; description: string; impact: string; createdAt: any; }
 export interface StfDecision { id: string; authorName: string; title: string; content: string; createdAt: any; }
+
+export interface ProjectAmendment {
+  id: string;
+  authorName: string;
+  text: string;
+  status: 'proposta' | 'aprovada' | 'rejeitada';
+  votes: Record<string, 'sim' | 'nao' | 'abstencao'>;
+}
+
+export interface DecreeAction {
+  type: 'nomeacao' | 'exoneracao';
+  pastaName: string;
+  userId: string;
+}
