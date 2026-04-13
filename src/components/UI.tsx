@@ -29,3 +29,18 @@ export function DataBar({ label, value, icon: Icon, color }: any) {
 export const formatMoney = (val: number) => Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 export const formatNum = (val: number) => Number(val || 0).toLocaleString('pt-BR');
 export const getYear = () => new Date().getFullYear();
+
+export const formatRole = (role: string) => {
+  const roles: Record<string, string> = {
+    espectador: 'Cidadão',
+    deputado: 'Deputado Federal',
+    presidente_congresso: 'Presidente do Congresso',
+    presidente_republica: 'Presidente da República',
+    governador: 'Governador(a)',
+    ministro_tse: 'Ministro do TSE',
+    stf: 'Ministro do STF',
+    ministro: 'Ministro de Estado',
+    admin: 'Mestre (Admin)'
+  };
+  return roles[role] || role;
+};

@@ -32,8 +32,16 @@ export interface GameEffect {
   pointsPerMonth: number; remainingMonths: number; isPositive: boolean;
 }
 
-export interface DocTemplate { id: string; branch: 'legislativo' | 'executivo' | 'judiciario'; name: string; abbreviation: string; isBudget: boolean; bodyText: string; }
-export interface LoaArticle { pastaName: string; percentage: number; }
+export interface DocTemplate { 
+  id: string; 
+  branch: 'legislativo' | 'executivo' | 'judiciario'; 
+  category: 'loa' | 'pec' | 'pl' | 'decreto_legislativo' | 'decreto' | 'portaria' | 'sentenca';
+  name: string; 
+  abbreviation: string; 
+  isBudget: boolean; 
+  bodyText: string; 
+}
+export interface LoaArticle { pastaName: string; percentage: number; customName?: string; }
 export interface ProjectArticle { id: number; text: string; isVetoed: boolean; }
 
 export interface BaseDocument {
@@ -42,14 +50,16 @@ export interface BaseDocument {
 }
 
 export interface RpgProject extends BaseDocument {
-  id: string; sequentialNumber: number; category: 'geral' | 'loa';
+  id: string; sequentialNumber: number; 
+  category: 'loa' | 'pec' | 'pl' | 'decreto_legislativo' | 'geral';
   templateName?: string; templateAbbreviation?: string; 
   loaDetails?: { stateId: string; artigos: LoaArticle[]; };
   title: string; artigos: ProjectArticle[]; 
   authorId: string; authorName: string;
+  status: 'proposto' | 'pauta' | 'votacao' | 'redacao_final' | 'sancao' | 'sancionado' | 'vetado' | 'votacao_veto' | 'promulgado' | 'arquivo';
+  votes: Record<string, 'sim' | 'nao' | 'abstencao'>; 
   amendments: ProjectAmendment[];
-  status: 'proposto' | 'pauta' | 'votacao' | 'sancao' | 'sancionado' | 'vetado' | 'votacao_veto' | 'promulgado' | 'arquivo';
-  votes: Record<string, 'sim' | 'nao' | 'abstencao'>; createdAt: any;
+  createdAt: any;
 }
 
 export interface RpgDecree extends BaseDocument {
@@ -67,6 +77,7 @@ export interface ProjectAmendment {
   text: string;
   status: 'proposta' | 'aprovada' | 'rejeitada';
   votes: Record<string, 'sim' | 'nao' | 'abstencao'>;
+  loaChange?: { pastaName: string; customName?: string; newPercentage: number; }; 
 }
 
 export interface DecreeAction {

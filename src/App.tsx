@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Landmark, FileText, DollarSign, Scale, Settings, LogOut, Activity, Clock } from 'lucide-react';
 import { onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore';
 
 import { auth, db, APP_ID } from './config/firebase';
 import { 
@@ -88,15 +88,23 @@ export default function App() {
       if(!profile) return;
       const nextNum = projects.length > 0 ? Math.max(...projects.map(p => p.sequentialNumber)) + 1 : 1;
       const template = templates.find(t => t.id === formData.templateId);
+      const cat = template?.category || 'pl';
+      
       const newProject: any = {
-        sequentialNumber: nextNum, title: formData.title, category: formData.category,
+        sequentialNumber: nextNum, title: formData.title, category: cat,
         templateName: template?.name || 'Projeto', templateAbbreviation: template?.abbreviation || 'PROJ',
         artigos: artigos.filter(a => (a.text || '').trim() !== ''),
         justificativa: formData.justificativa || '', intendedMacro: formData.intendedMacro || '', apurado: false,
         authorId: profile.id, authorName: profile.discordUsername, status: 'proposto', votes: {}, createdAt: serverTimestamp(),
-        amendments: []
+        amendments: [], year: gameTime.year
       };
-      if (formData.category === 'loa') newProject.loaDetails = { stateId: profile.jurisdictionId || 'federal', artigos: loaArtigos.filter(a => a.pastaName) };
+      
+      if (cat === 'loa') {
+        newProject.loaDetails = { 
+          stateId: profile.jurisdictionId || 'federal', 
+          artigos: loaArtigos.map((a: any) => ({ pastaName: a.pastaName === 'outro' ? (a.customName || 'Reserva') : a.pastaName, percentage: a.percentage }))
+        };
+      }
       await setDoc(doc(db, 'artifacts', APP_ID, 'projects', generateId()), newProject);
       showToast("Documento Protocolado!");
     },
@@ -112,35 +120,113 @@ export default function App() {
       if (!p) return;
       const sim = Object.values(p.votes).filter(v => v === 'sim').length;
       const nao = Object.values(p.votes).filter(v => v === 'nao').length;
-      const newStatus = isVetoVote ? (sim > nao ? 'promulgado' : 'arquivo') : (sim > nao ? 'sancao' : 'arquivo');
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus, votes: {} });
-      showToast("Votação Encerrada!");
+      
+      if (isVetoVote) {
+        const newStatus = sim > nao ? 'promulgado' : 'arquivo';
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus, votes: {} });
+        showToast(sim > nao ? "Veto Derrubado! Promulgado." : "Veto Mantido! Arquivado.");
+      } else {
+        const updatedAmendments = (p.amendments || []).map((am: any) => {
+          const amSim = Object.values(am.votes || {}).filter(v => v === 'sim').length;
+          const amNao = Object.values(am.votes || {}).filter(v => v === 'nao').length;
+          return { ...am, status: amSim > amNao ? 'aprovada' : 'rejeitada' };
+        });
+
+        // LÓGICA DE APROVAÇÃO (Maioria Simples vs Qualificada)
+        let aprovado = false;
+        if (p.category === 'pec') {
+          // PEC: Requer 3/5 (60%) dos parlamentares ativos
+          const totalDeputados = usersList.filter((u:any) => u.role === 'deputado' || u.role === 'presidente_congresso').length;
+          const requiredVotes = Math.max(1, Math.ceil(totalDeputados * 0.6));
+          aprovado = sim >= requiredVotes;
+          if(!aprovado) showToast(`PEC Rejeitada. Faltaram votos (Mínimo: ${requiredVotes}).`);
+        } else {
+          // PL, LOA, Decreto Legislativo: Maioria Simples
+          aprovado = sim > nao;
+        }
+
+        if (aprovado) {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: 'redacao_final', votes: {}, amendments: updatedAmendments });
+          showToast("Aprovado! Aguardando Redação Final pelo Pres. do Congresso.");
+        } else {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: 'arquivo', votes: {}, amendments: updatedAmendments });
+          if(p.category !== 'pec') showToast("Projeto Rejeitado e Arquivado.");
+        }
+      }
+    },
+
+    promulgarProjeto: async (projectId: string, artigosEditados: any[], loaEditada?: any) => {
+       const payload: any = { status: 'promulgado', artigos: artigosEditados };
+       if (loaEditada) payload.loaDetails = loaEditada;
+       await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), payload);
+       showToast("Redação Concluída! Documento PROMULGADO pelo Congresso.");
     },
 
     changeStatus: async (projectId: string, newStatus: string) => {
       await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus });
     },
 
-    proporEmenda: async (projectId: string, text: string) => {
+    proporEmenda: async (projectId: string, text: string, loaChange?: any) => {
       if(!profile) return;
       const p = projects.find(x => x.id === projectId);
       if(!p) return;
-      const newAmendment: ProjectAmendment = {
+      const newAmendment: any = {
         id: Math.random().toString(36).substr(2, 9),
-        authorName: profile.discordUsername, text, status: 'proposta', votes: {}
+        authorName: profile.discordUsername,
+        text,
+        status: 'proposta',
+        votes: {}
       };
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: [...(p.amendments || []), newAmendment] });
-      showToast("Emenda Protocolada!");
+      if (loaChange) newAmendment.loaChange = loaChange;
+      
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), {
+        amendments: [...(p.amendments || []), newAmendment]
+      });
+      showToast("Emenda protocolada ao projeto!");
+    },
+
+    voteEmenda: async (projectId: string, amendaId: string, vote: string) => {
+      const p = projects.find(x => x.id === projectId);
+      if(!p || !profile) return;
+      const updated = (p.amendments||[]).map((am: any) => {
+        if(am.id === amendaId) return { ...am, votes: { ...am.votes, [profile.id]: vote } };
+        return am;
+      });
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: updated });
     },
 
     decidirEmenda: async (projectId: string, amendaId: string, approved: boolean) => {
       const p = projects.find(x => x.id === projectId);
       if(!p) return;
-      const updated = p.amendments.map(am => {
-        if(am.id === amendaId) return { ...am, status: approved ? 'aprovada' : 'rejeitada' as any };
+      
+      let updatedLoaDetails = p.loaDetails;
+      let updatedArtigos = p.artigos;
+
+      const updated = (p.amendments||[]).map((am: any) => {
+        if(am.id === amendaId) {
+          if (approved && am.loaChange && updatedLoaDetails) {
+             const existsIndex = updatedLoaDetails.artigos.findIndex((a:any) => a.pastaName === am.loaChange.pastaName && a.customName === am.loaChange.customName);
+             if (existsIndex >= 0) {
+                updatedLoaDetails.artigos[existsIndex].percentage = am.loaChange.newPercentage;
+             } else {
+                updatedLoaDetails.artigos.push({ pastaName: am.loaChange.pastaName, customName: am.loaChange.customName, percentage: am.loaChange.newPercentage });
+             }
+
+             const toRoman = (num: number) => { const r = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"]; return r[num] || String(num); };
+             const distText = updatedLoaDetails.artigos.map((a:any, i:number) => `${toRoman(i+1)}. ${(a.pastaName === 'outro' ? (a.customName||'RESERVA') : a.pastaName).toUpperCase()} - ${a.percentage}%`).join('\n');
+             updatedArtigos = updatedArtigos.map((a:any) => a.id === 1 ? { ...a, text: `Fica aprovado o Orçamento com a seguinte distribuição:\n${distText}` } : a);
+          }
+          return { ...am, status: approved ? 'aprovada' : 'rejeitada' };
+        }
         return am;
       });
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: updated });
+
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { 
+          amendments: updated,
+          loaDetails: updatedLoaDetails || null,
+          artigos: updatedArtigos || p.artigos
+      });
+      showToast(approved ? "Emenda aprovada e incorporada à Lei!" : "Emenda rejeitada.");
     },
 
     publishDecreto: async (data: any, actionsList: DecreeAction[]) => {
@@ -220,16 +306,34 @@ export default function App() {
 
     diplomar: async (listaDiplomados: any[]) => {
       if(!listaDiplomados || listaDiplomados.length === 0) return showToast("Lista vazia!");
-      let content = "Justiça Eleitoral - Diplomação Oficial:\n\n";
+      
+      const currentYear = new Date().getFullYear();
+      // FIX Fase 1.2: Calcula o número sequencial da Sentença
+      const nextNum = decisions.length > 0 ? Math.max(...decisions.map((d:any) => d.sequentialNumber || 0)) + 1 : 1;
+
+      let content = "A Justiça Eleitoral certifica a diplomação oficial dos seguintes eleitos para seus respectivos mandatos:\n\n";
+
+      // Usando uma cópia rápida do mapeamento de cargos para não precisar importar
+      const roleNames: any = { deputado: 'Deputado Federal', presidente_congresso: 'Presidente do Congresso', presidente_republica: 'Presidente da República', governador: 'Governador(a)', ministro_tse: 'Ministro do TSE', stf: 'Ministro do STF' };
+
       for (let i = 0; i < listaDiplomados.length; i++) {
         const item = listaDiplomados[i];
         const electedUser = usersList.find(u => u.id === item.userId);
         const targetState = states.find(s => s.id === item.jurisdictionId);
+        
         await updateDoc(doc(db, 'artifacts', APP_ID, 'users', item.userId), { role: item.role, jurisdictionId: item.jurisdictionId, pastaId: null });
-        content += `Art. ${i + 1}º - ${electedUser?.discordUsername} assume como ${item.role.toUpperCase()} em ${targetState?.name}.\n`;
+        
+        content += `Art. ${i + 1}º - O Sr(a). ${electedUser?.discordUsername} assume oficialmente o cargo de ${roleNames[item.role] || item.role.toUpperCase()} pela jurisdição de ${targetState?.name || 'União Federal'}.\n`;
       }
-      await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { authorName: 'TSE', title: `DIPLOMAÇÃO GERAL`, content, createdAt: serverTimestamp() });
-      showToast("Eleitos Diplomados!");
+
+      await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { 
+        sequentialNumber: nextNum, // Salva o número sequencial
+        authorName: 'Tribunal Superior Eleitoral', 
+        title: `DIPLOMAÇÃO GERAL Nº ${nextNum}/${currentYear}`, 
+        content, 
+        createdAt: serverTimestamp() 
+      });
+      showToast("Eleitos Diplomados com Sucesso!");
     },
 
     advanceTime: async () => {
@@ -274,6 +378,39 @@ export default function App() {
     apurarDocumento: async (col: 'projects'|'decrees', docId: string, effectData: any) => {
       if(effectData.pointsPerMonth !== 0) await setDoc(doc(db, 'artifacts', APP_ID, 'effects', generateId()), { ...effectData, isPositive: effectData.pointsPerMonth > 0 });
       await updateDoc(doc(db, 'artifacts', APP_ID, col, docId), { apurado: true });
+    },
+    hardReset: async (data: { countryName: string, startMonth: number, startYear: number }) => {
+      if (profile?.role !== 'admin') return;
+      
+      // 1. Apaga todas as coleções antigas
+      const collectionsToClear = ['projects', 'decrees', 'judiciary', 'effects', 'states'];
+      for (const colName of collectionsToClear) {
+        const snap = await getDocs(collection(db, 'artifacts', APP_ID, colName));
+        snap.forEach(d => deleteDoc(doc(db, 'artifacts', APP_ID, colName, d.id)));
+      }
+
+      // 2. Cria o País/União Federal Base
+      const initialIndicators: any = {};
+      Object.entries(TAXONOMY).forEach(([macro, micros]) => {
+        initialIndicators[macro] = {};
+        micros.forEach(m => initialIndicators[macro][m] = 50);
+      });
+      await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), {
+        name: data.countryName, type: 'federal',
+        macro: { populacao: 0, pib: 0, aprovacao: 50, caixa: 10000000 },
+        indicators: initialIndicators, allocatedBudget: {}
+      });
+
+      // 3. Reseta os cargos dos jogadores (exceto o Admin atual)
+      for (const u of usersList) {
+        if (u.role !== 'admin') {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'users', u.id), { role: 'espectador', jurisdictionId: 'federal', pastaId: null });
+        }
+      }
+
+      // 4. Reseta o Relógio do Jogo
+      await setDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), { month: Number(data.startMonth), year: Number(data.startYear) });
+      showToast("HARD RESET CONCLUÍDO! O país foi reiniciado.");
     }
   };
 
@@ -322,7 +459,7 @@ export default function App() {
         <div className="flex md:flex-col overflow-x-auto p-2 gap-2 flex-1">
           <NavButton icon={Activity} label="Dados & Nação" active={activeTab === 'dados'} onClick={() => setActiveTab('dados')} />
           <NavButton icon={FileText} label="Congresso" active={activeTab === 'legislativo'} onClick={() => setActiveTab('legislativo')} />
-          <NavButton icon={DollarSign} label="Governo Exec." active={activeTab === 'executivo'} onClick={() => setActiveTab('executivo')} />
+          <NavButton icon={DollarSign} label="Executivo" active={activeTab === 'executivo'} onClick={() => setActiveTab('executivo')} />
           <NavButton icon={Scale} label="Justiça / TSE" active={activeTab === 'judiciario'} onClick={() => setActiveTab('judiciario')} />
           {profile?.role === 'admin' && <NavButton icon={Settings} label="Mestre (Admin)" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
         </div>

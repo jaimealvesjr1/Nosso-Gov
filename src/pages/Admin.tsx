@@ -13,6 +13,9 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
   const [apuracaoModal, setApuracaoModal] = useState<any>(null);
   const [effectForm, setEffectForm] = useState({ stateId: '', macro: 'saude', micro: '', pointsPerMonth: 0, remainingMonths: 1 });
 
+  const [hardResetModal, setHardResetModal] = useState(false);
+  const [resetData, setResetData] = useState({ countryName: 'República do Brasil', startMonth: 1, startYear: 2026 });
+
   const filteredUsers = usersList.filter((u: any) => u.discordUsername.toLowerCase().includes(searchTerm.toLowerCase()));
   const docsToApurar = [
     ...projects.filter((p: RpgProject) => ['sancionado', 'promulgado'].includes(p.status) && !p.apurado).map((p: RpgProject) => ({...p, docType: 'projects'})),
@@ -21,6 +24,9 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
 
   return (
     <div className="space-y-8">
+      <div className="flex justify-end">
+        <button onClick={() => setHardResetModal(true)} className="bg-red-900/80 hover:bg-red-800 text-red-200 px-4 py-2 rounded text-xs font-bold border border-red-700 transition">⚠️ Iniciar Nova Temporada (Hard Reset)</button>
+      </div>
       
       <div className="bg-emerald-900/20 border border-emerald-700 rounded-xl p-6 shadow-lg flex justify-between items-center">
          <div>
@@ -173,35 +179,31 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
 
       {modalTpl && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 p-6 rounded-xl w-full max-w-lg border border-gray-600 shadow-2xl">
-             <h3 className="text-xl font-bold mb-4 text-white border-b border-gray-700 pb-2">Novo Modelo</h3>
-             
-             <label className="text-xs text-gray-400 uppercase font-bold">Poder / Aba</label>
-             <select value={tplData.branch} onChange={e => setTplData({...tplData, branch: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mt-1 mb-4 outline-none">
-               <option value="legislativo">Legislativo (Projetos, PECs, etc)</option>
-               <option value="executivo">Executivo (Medidas Provisórias, Portarias)</option>
-               <option value="judiciario">Judiciário (Súmulas, Sentenças)</option>
-             </select>
-             
-             <div className="flex gap-2 mb-4">
-               <div className="flex-1"><input placeholder="Nome (Ex: Proj. Lei)" onChange={e => setTplData({...tplData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" /></div>
-               <div className="w-1/3"><input placeholder="Sigla (Ex: PL)" onChange={e => setTplData({...tplData, abbreviation: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" /></div>
+          <div className="flex gap-2 mb-4 mt-1">
+               <div className="flex-1">
+                 <label className="text-xs text-gray-400 uppercase font-bold">Poder / Aba</label>
+                 <select value={tplData.branch} onChange={e => setTplData({...tplData, branch: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
+                   <option value="legislativo">Legislativo</option>
+                   <option value="executivo">Executivo</option>
+                   <option value="judiciario">Judiciário</option>
+                 </select>
+               </div>
+               <div className="flex-1">
+                 <label className="text-xs text-gray-400 uppercase font-bold">Categoria (Regras)</label>
+                 <select value={tplData.category} onChange={e => {
+                    const val = e.target.value;
+                    setTplData({...tplData, category: val, isBudget: val === 'loa'});
+                 }} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
+                   <option value="pl">Proj. Lei Ordinária (PL)</option>
+                   <option value="pec">Emenda Constitucional (PEC)</option>
+                   <option value="loa">Lei Orçamentária (LOA)</option>
+                   <option value="decreto_legislativo">Decreto Legislativo</option>
+                   <option value="decreto">Decreto Presidencial</option>
+                   <option value="portaria">Portaria Ministerial</option>
+                   <option value="sentenca">Sentença/Súmula</option>
+                 </select>
+               </div>
              </div>
-             
-             {tplData.branch === 'legislativo' && (
-               <label className="flex items-center text-sm text-green-400 mb-4 bg-gray-900 border border-gray-700 p-3 rounded cursor-pointer shadow-sm">
-                 <input type="checkbox" checked={tplData.isBudget} onChange={e => setTplData({...tplData, isBudget: e.target.checked})} className="mr-3 w-4 h-4 accent-green-500" />
-                 Ativar lógica de Distribuição de Orçamento Financeiro (LOA)
-               </label>
-             )}
-             
-             <textarea rows={5} placeholder="Corpo Padrão do Documento..." onChange={e => setTplData({...tplData, bodyText: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mb-6 font-serif outline-none" />
-             
-             <div className="flex gap-2">
-               <button onClick={() => setModalTpl(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
-               <button onClick={() => { actions.saveTemplate(tplData); setModalTpl(false); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Salvar Modelo</button>
-             </div>
-          </div>
         </div>
       )}
 
@@ -221,6 +223,33 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
             <div className="flex gap-2">
                <button onClick={() => setModalState(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
                <button onClick={() => { actions.createState(stateData); setModalState(false); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Fundar Entidade</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {hardResetModal && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-900 p-8 rounded-xl w-full max-w-md border-2 border-red-600 shadow-2xl">
+            <h3 className="text-2xl font-bold mb-4 text-red-500 border-b border-red-900/50 pb-2">⚠️ ATENÇÃO: HARD RESET</h3>
+            <p className="text-gray-300 text-sm mb-6">Esta ação irá apagar TODOS os documentos, projetos, decretos, orçamentos e reiniciar o país. Todos os jogadores perderão os cargos. <strong>Isto é irreversível.</strong></p>
+            
+            <label className="text-xs text-gray-400 uppercase font-bold">Nome do Novo País/União</label>
+            <input type="text" value={resetData.countryName} onChange={e => setResetData({...resetData, countryName: e.target.value})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 mb-4 outline-none" />
+            
+            <div className="flex gap-4 mb-6">
+              <div className="flex-1">
+                <label className="text-xs text-gray-400 uppercase font-bold">Mês Inicial</label>
+                <input type="number" min="1" max="12" value={resetData.startMonth} onChange={e => setResetData({...resetData, startMonth: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 outline-none" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-400 uppercase font-bold">Ano Inicial</label>
+                <input type="number" value={resetData.startYear} onChange={e => setResetData({...resetData, startYear: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 outline-none" />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+               <button onClick={() => setHardResetModal(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-800 rounded transition">Cancelar</button>
+               <button onClick={() => { actions.hardReset(resetData); setHardResetModal(false); }} className="flex-1 bg-red-600 hover:bg-red-500 text-white py-3 rounded font-bold shadow-lg transition">Destruir e Recriar Mundo</button>
             </div>
           </div>
         </div>
