@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Target, Clock, Zap, Trash2 } from 'lucide-react';
+import { Target, Clock, Zap, Trash2, DollarSign, EyeOff, Users, Settings } from 'lucide-react';
 import { RpgProject, RpgDecree, DocTemplate, TAXONOMY, MacroArea } from '../types';
-import { formatMoney } from '../components/UI';
 
-export function AdminView({ usersList, states, templates, projects, decrees, gameTime, activeEffects, actions }: any) {
+export function AdminView({ profile, usersList, states, templates, projects, decrees, gameTime, activeEffects, actions, showToast }: any) {
   const [searchTerm, setSearchTerm] = useState('');
   const [modalState, setModalState] = useState(false);
   const [modalTpl, setModalTpl] = useState(false);
@@ -16,256 +15,184 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
   const [hardResetModal, setHardResetModal] = useState(false);
   const [resetData, setResetData] = useState({ countryName: 'República do Brasil', startMonth: 1, startYear: 2026 });
 
+  const [financeForm, setFinanceForm] = useState({ stateId: states[0]?.id || 'federal', pastaName: 'caixa_geral', amount: 0 });
+
   const filteredUsers = usersList.filter((u: any) => u.discordUsername.toLowerCase().includes(searchTerm.toLowerCase()));
+  
+  // Filtra documentos que precisam de julgamento (Sancionados ou Decretos novos)
   const docsToApurar = [
     ...projects.filter((p: RpgProject) => ['sancionado', 'promulgado'].includes(p.status) && !p.apurado).map((p: RpgProject) => ({...p, docType: 'projects'})),
-    ...decrees.filter((d: RpgDecree) => !d.apurado).map((d: RpgDecree) => ({...d, docType: 'decrees'}))
+    ...decrees.filter((d: any) => !d.apurado).map((d: any) => ({...d, docType: 'decrees'}))
   ];
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-end">
-        <button onClick={() => setHardResetModal(true)} className="bg-red-900/80 hover:bg-red-800 text-red-200 px-4 py-2 rounded text-xs font-bold border border-red-700 transition">⚠️ Iniciar Nova Temporada (Hard Reset)</button>
+    <div className="space-y-8 pb-10">
+      <div className="flex justify-between items-center border-b border-gray-700 pb-4">
+        <h2 className="text-3xl font-bold text-white flex items-center"><Settings className="mr-3 text-gray-400"/> Painel de Moderação</h2>
+        <button onClick={() => setHardResetModal(true)} className="bg-red-900/40 hover:bg-red-900 text-red-400 px-4 py-2 rounded text-xs font-bold border border-red-900/50 transition">⚠️ Hard Reset</button>
       </div>
       
-      {/* Relógio do Jogo */}
-      <div className="bg-emerald-900/20 border border-emerald-700 rounded-xl p-6 shadow-lg flex justify-between items-center">
+      {/* Relógio e Gráficos */}
+      <div className="bg-emerald-900/10 border border-emerald-700/50 rounded-xl p-6 flex justify-between items-center shadow-lg">
          <div>
-           <h3 className="text-2xl font-bold text-emerald-400 flex items-center"><Clock className="w-6 h-6 mr-3"/> Relógio do Jogo</h3>
-           <p className="text-gray-300 mt-1">Efeitos Ativos: <strong className="text-white">{activeEffects.length}</strong> influenciando os dados estaduais.</p>
+           <h3 className="text-xl font-bold text-emerald-400 flex items-center"><Clock className="w-5 h-5 mr-2"/> Ciclo Temporal</h3>
+           <p className="text-sm text-gray-400 mt-1">Ao avançar, os efeitos mensais são aplicados e um snapshot é salvo para o gráfico.</p>
          </div>
-         <button onClick={actions.advanceTime} className="bg-emerald-600 hover:bg-emerald-500 px-6 py-4 rounded-lg text-white font-bold text-lg shadow-xl transition transform hover:scale-105">
-           Avançar para Mês {gameTime.month === 12 ? 1 : gameTime.month + 1}
+         <button onClick={actions.advanceTime} className="bg-emerald-600 hover:bg-emerald-500 px-6 py-3 rounded-lg text-white font-bold shadow-xl transition-all active:scale-95">
+           Avançar para {gameTime.month === 12 ? 1 : gameTime.month + 1}/{gameTime.month === 12 ? gameTime.year + 1 : gameTime.year}
          </button>
       </div>
 
-      {/* Central de Apuração */}
+      {/* Central de Moderação (Intenções Ocultas) */}
       <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-lg">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center"><Target className="w-5 h-5 mr-2 text-indigo-400"/> Central de Apuração (Mestre)</h3>
-        <p className="text-sm text-gray-400 mb-6">Julgue as intenções dos jogadores nos documentos finalizados e defina o impacto mecânico no jogo.</p>
-        
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center"><Target className="w-5 h-5 mr-2 text-indigo-400"/> Fila de Apuração</h3>
         <div className="space-y-4">
            {docsToApurar.map((doc: any) => (
-             <div key={doc.id} className="bg-gray-900 p-4 rounded border border-gray-700 flex justify-between items-center shadow-sm">
-                <div>
-                  <span className="text-xs font-bold uppercase bg-gray-800 text-gray-400 px-2 py-1 rounded border border-gray-700">{doc.docType === 'projects' ? 'Lei Aprovada' : 'Decreto/Portaria'}</span>
-                  <h4 className="font-bold text-white mt-3 font-serif text-lg">{doc.title}</h4>
-                  <p className="text-sm text-indigo-300 italic mt-1 bg-indigo-900/20 p-2 rounded border border-indigo-900/50">Intenção: {doc.intendedMacro?.replace('_', ' ') || 'Geral'} - "{doc.justificativa || 'Sem justificativa'}"</p>
+             <div key={doc.id} className="bg-gray-900 p-4 rounded border border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                <div className="flex-1">
+                  <span className="text-[10px] font-bold uppercase bg-gray-800 text-gray-500 px-2 py-0.5 rounded border border-gray-700 mb-2 inline-block">
+                    {doc.docType === 'projects' ? 'Lei' : 'Decreto'}
+                  </span>
+                  <h4 className="font-bold text-white font-serif">{doc.title}</h4>
+                  
+                  {doc.hiddenIntent ? (
+                    <div className="mt-3 bg-indigo-950/30 p-3 rounded border border-indigo-500/20">
+                       <p className="text-[11px] font-bold text-indigo-400 uppercase flex items-center mb-1"><EyeOff className="w-3 h-3 mr-1"/> Intenção Secreta:</p>
+                       <p className="text-sm text-indigo-100 italic">"{doc.hiddenIntent.description}"</p>
+                       <p className="text-[10px] text-indigo-500 mt-2 font-mono">ALVO: {doc.hiddenIntent.targetMacro.toUpperCase()} ➔ {doc.hiddenIntent.targetMicro}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic mt-2">Nenhuma intenção oculta declarada.</p>
+                  )}
                 </div>
                 <button onClick={() => { 
                   setApuracaoModal(doc); 
                   setEffectForm({
                     ...effectForm, 
-                    macro: doc.intendedMacro || 'saude',
-                    stateId: doc.jurisdictionId || doc.loaDetails?.stateId || (states.length > 0 ? states[0].id : 'federal')
+                    macro: doc.hiddenIntent?.targetMacro || 'saude',
+                    micro: doc.hiddenIntent?.targetMicro || '',
+                    pointsPerMonth: '', 
+                    stateId: doc.jurisdictionId || (states.length > 0 ? states[0].id : 'federal')
                   }); 
-                }} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-sm text-white font-bold shadow-lg transition ml-4">
-                  Julgar Efeito
-                </button>
+                }} className="bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 rounded text-sm text-white font-bold transition">Julgar</button>
              </div>
            ))}
-           {docsToApurar.length === 0 && <p className="text-gray-500 italic border-2 border-dashed border-gray-700 p-8 rounded-lg text-center">Nenhum documento aguardando julgamento no momento.</p>}
+           {docsToApurar.length === 0 && <p className="text-gray-600 italic text-center py-6">Nenhuma ação pendente de moderação.</p>}
         </div>
       </div>
 
-      {/* Gestão de Modelos (Templates) */}
+      {/* Ajustes Financeiros Rápidos */}
       <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-lg">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-           <h3 className="text-xl font-bold text-white">Modelos de Documentos Oficiais</h3>
-           <button onClick={() => {setTplData({ branch: 'legislativo', isBudget: false, category: 'pl' }); setModalTpl(true);}} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white text-sm font-bold shadow-lg transition">+ Criar Modelo</button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-           {templates.map((t: DocTemplate) => (
-             <div key={t.id} className="bg-gray-900 p-4 rounded-lg border border-gray-700 relative group shadow-sm">
-                <button onClick={() => actions.deleteTemplate(t.id)} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 className="w-4 h-4"/></button>
-                <span className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded uppercase border border-gray-700 mr-2">{t.branch}</span>
-                <span className="text-xs bg-gray-800 text-indigo-400 px-2 py-1 rounded uppercase border border-gray-700">{t.category}</span>
-                <h4 className="text-white font-bold mt-3">{t.name} ({t.abbreviation})</h4>
-             </div>
-           ))}
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center"><DollarSign className="w-5 h-5 mr-2 text-green-400"/> Tesouro e Cobranças</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-900 p-4 rounded-lg border border-gray-700">
+          <select value={financeForm.stateId} onChange={e => setFinanceForm({...financeForm, stateId: e.target.value})} className="bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm outline-none">
+             <option value="federal">União Federal</option>
+             {states.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={financeForm.pastaName} onChange={e => setFinanceForm({...financeForm, pastaName: e.target.value})} className="bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm outline-none capitalize">
+             <option value="caixa_geral">Caixa Geral</option>
+             {Object.keys(TAXONOMY).map(m => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
+          </select>
+          <input type="number" value={financeForm.amount || ''} onChange={e => setFinanceForm({...financeForm, amount: Number(e.target.value)})} className="bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm outline-none" placeholder="Valor R$" />
+          <div className="flex gap-2">
+            <button onClick={() => actions.adjustBudget(financeForm.stateId, financeForm.pastaName, financeForm.amount, false)} className="flex-1 bg-green-600 text-white rounded font-bold text-xs">+</button>
+            <button onClick={() => actions.adjustBudget(financeForm.stateId, financeForm.pastaName, financeForm.amount, true)} className="flex-1 bg-red-600 text-white rounded font-bold text-xs">-</button>
+          </div>
         </div>
       </div>
 
-      {/* Controle de Jogadores */}
-      <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl overflow-x-auto shadow-lg">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-           <h3 className="text-xl font-bold text-white">Controle de Jogadores Rápidos</h3>
-           <input type="text" placeholder="Ex: 5 (ou -3)" value={effectForm.pointsPerMonth} onChange={e => setEffectForm({...effectForm, pointsPerMonth: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none"/>
+      {/* Gestão de Jogadores */}
+      <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-white flex items-center"><Users className="w-5 h-5 mr-2 text-blue-400"/> Controle de Jogadores</h3>
+          <input type="text" placeholder="Filtrar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-gray-900 border border-gray-700 text-white px-3 py-1.5 rounded-full text-xs outline-none focus:border-blue-500 w-48 shadow-inner"/>
         </div>
-        <table className="w-full text-left text-sm whitespace-nowrap text-white">
-          <thead className="bg-gray-900 text-gray-400">
-            <tr>
-              <th className="p-3 rounded-tl border-b border-gray-700">Jogador</th>
-              <th className="p-3 border-b border-gray-700">Cargo Real</th>
-              <th className="p-3 border-b border-gray-700">Jurisdição</th>
-              <th className="p-3 rounded-tr border-b border-gray-700">Pasta Ministerial</th>
-            </tr>
-          </thead>
-          <tbody>{filteredUsers.map((u: any) => (
-            <tr key={u.id} className="border-b border-gray-700 hover:bg-gray-750 transition-colors">
-              <td className="p-3 font-bold text-indigo-300">{u.discordUsername}</td>
-              <td className="p-3">
-                <select value={u.role} onChange={e => actions.updateUser(u.id, e.target.value, u.jurisdictionId, u.pastaId)} className="bg-gray-700 border border-gray-600 p-2 rounded outline-none w-full">
-                  <option value="espectador">Espectador</option><option value="deputado">Deputado</option><option value="presidente_congresso">Presidente do Congresso</option><option value="presidente_republica">Presidente da República</option><option value="governador">Governador</option><option value="ministro_tse">Ministro TSE</option><option value="stf">Ministro do STF</option><option value="ministro">Ministro</option><option value="admin">Admin (Mestre)</option>
-                </select>
-              </td>
-              <td className="p-3">
-                <select value={u.jurisdictionId || 'federal'} onChange={e => actions.updateUser(u.id, u.role, e.target.value, u.pastaId)} className="bg-gray-700 border border-gray-600 p-2 rounded outline-none w-full">
-                  <option value="federal">Governo Federal (União)</option>
-                  {states.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </td>
-              <td className="p-3">
-                <select value={u.pastaId || ''} onChange={e => actions.updateUser(u.id, u.role, u.jurisdictionId, e.target.value)} className="bg-gray-700 border border-gray-600 p-2 rounded outline-none w-full" disabled={u.role !== 'ministro'}>
-                  <option value="">Nenhuma / Não Aplicável</option>
-                  {Object.keys(TAXONOMY).map(m => <option key={m} value={m} className="capitalize">{m.replace('_', ' ')}</option>)}
-                </select>
-              </td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-
-      <div className="pt-4 border-t border-gray-700">
-        <button onClick={() => setModalState(true)} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-bold shadow-lg transition">Criar Entidade / Estado</button>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-white">
+            <thead className="bg-gray-900 text-gray-500 uppercase">
+              <tr>
+                <th className="p-3 border-b border-gray-700">Jogador</th>
+                <th className="p-3 border-b border-gray-700">Cargo</th>
+                <th className="p-3 border-b border-gray-700">Jurisdição</th>
+                <th className="p-3 border-b border-gray-700">Pasta</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800">
+              {filteredUsers.map((u: any) => (
+                <tr key={u.id} className="hover:bg-gray-750 transition-colors">
+                  <td className="p-3 font-bold text-blue-300">{u.discordUsername}</td>
+                  <td className="p-3">
+                    <select value={u.role} onChange={e => actions.updateUser(u.id, e.target.value, u.jurisdictionId, u.pastaId)} className="bg-gray-700 border-none p-1 rounded text-[10px] w-full">
+                      <option value="espectador">Espectador</option><option value="deputado">Deputado</option><option value="presidente_republica">Presidente</option><option value="ministro">Ministro</option><option value="stf">STF</option><option value="moderador">Moderador</option>
+                    </select>
+                  </td>
+                  <td className="p-3">
+                    <select value={u.jurisdictionId || 'federal'} onChange={e => actions.updateUser(u.id, u.role, e.target.value, u.pastaId)} className="bg-gray-700 border-none p-1 rounded text-[10px] w-full">
+                      <option value="federal">Federal</option>
+                      {states.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </td>
+                  <td className="p-3">
+                    <select value={u.pastaId || ''} onChange={e => actions.updateUser(u.id, u.role, u.jurisdictionId, e.target.value)} className="bg-gray-700 border-none p-1 rounded text-[10px] w-full">
+                      <option value="">Nenhuma</option>
+                      {Object.keys(TAXONOMY).map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* MODAL: Apuração de Efeitos */}
       {apuracaoModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-gray-800 p-6 rounded-xl w-full max-w-lg border border-indigo-600 shadow-2xl">
-            <h3 className="text-xl font-bold text-indigo-400 mb-4 border-b border-gray-700 pb-2">Aplicar Efeito Mecânico</h3>
-            <p className="text-white mb-4">Doc: <strong className="font-serif">{apuracaoModal.title}</strong></p>
-            
-            <div className="bg-gray-900 p-4 rounded mb-4 border border-gray-700">
-              <label className="text-xs text-gray-400 uppercase font-bold">Estado Alvo do Impacto</label>
-              <select value={effectForm.stateId} onChange={e => setEffectForm({...effectForm, stateId: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 mb-4 outline-none">
-                 <option value="federal">União Federal (Geral)</option>
-                 {states.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-
-              <label className="text-xs text-gray-400 uppercase font-bold">Macro Área</label>
-              <select value={effectForm.macro} onChange={e => setEffectForm({...effectForm, macro: e.target.value as MacroArea})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 mb-4 outline-none">
-                 {Object.keys(TAXONOMY).map(m => <option key={m} value={m} className="capitalize">{m.replace('_', ' ')}</option>)}
-              </select>
-              
-              <label className="text-xs text-gray-400 uppercase font-bold">Micro Dado Específico</label>
-              <select value={effectForm.micro} onChange={e => setEffectForm({...effectForm, micro: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 mb-4 outline-none">
-                 <option value="">-- Selecione o dado --</option>
-                 {TAXONOMY[effectForm.macro as MacroArea]?.map(micro => <option key={micro} value={micro}>{micro}</option>)}
-              </select>
-
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-400 uppercase font-bold">Pontos por Mês</label>
-                  <input type="number" placeholder="Ex: 5 (ou -3)" value={effectForm.pointsPerMonth} onChange={e => setEffectForm({...effectForm, pointsPerMonth: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none"/>
+            <h3 className="text-xl font-bold text-indigo-400 mb-4 border-b border-gray-700 pb-2 flex items-center"><Zap className="mr-2"/> Decretar Impacto Mecânico</h3>
+            <div className="bg-gray-900 p-4 rounded mb-4 border border-gray-700 space-y-4">
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase font-bold">Estado Afetado</label>
+                <select value={effectForm.stateId} onChange={e => setEffectForm({...effectForm, stateId: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 outline-none text-sm">
+                   <option value="federal">União Federal</option>
+                   {states.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase font-bold">Macro</label>
+                  <select value={effectForm.macro} onChange={e => setEffectForm({...effectForm, macro: e.target.value as MacroArea})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 outline-none text-sm capitalize">
+                     {Object.keys(TAXONOMY).map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs text-gray-400 uppercase font-bold">Duração (Meses)</label>
-                  <input type="number" min="1" value={effectForm.remainingMonths} onChange={e => setEffectForm({...effectForm, remainingMonths: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none"/>
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase font-bold">Micro</label>
+                  <select value={effectForm.micro} onChange={e => setEffectForm({...effectForm, micro: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 outline-none text-sm">
+                     <option value="">-- Selecione --</option>
+                     {TAXONOMY[effectForm.macro as MacroArea]?.map(micro => <option key={micro} value={micro}>{micro}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase font-bold">Pontos / Mês</label>
+                  <input type="text" placeholder="Ex: -5 ou 10" value={effectForm.pointsPerMonth} onChange={e => setEffectForm({...effectForm, pointsPerMonth: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none text-sm"/>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase font-bold">Duração (Meses)</label>
+                  <input type="number" min="1" value={effectForm.remainingMonths} onChange={e => setEffectForm({...effectForm, remainingMonths: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none text-sm"/>
                 </div>
               </div>
             </div>
-
-            <div className="flex gap-2 mt-6">
-               <button onClick={() => setApuracaoModal(null)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
+            <div className="flex gap-2">
+               <button onClick={() => setApuracaoModal(null)} className="flex-1 py-3 text-gray-400 font-bold">Cancelar</button>
                <button onClick={() => { 
                  if(!effectForm.micro) return alert("Selecione um Micro Dado!");
                  actions.apurarDocumento(apuracaoModal.docType, apuracaoModal.id, {
-                   sourceDocTitle: apuracaoModal.title, stateId: effectForm.stateId, macro: effectForm.macro, micro: effectForm.micro, pointsPerMonth: Number(effectForm.pointsPerMonth), remainingMonths: Number(effectForm.remainingMonths)
+                   sourceDocTitle: apuracaoModal.title, stateId: effectForm.stateId, macro: effectForm.macro, micro: effectForm.micro, pointsPerMonth: Number(effectForm.pointsPerMonth) || 0, remainingMonths: Number(effectForm.remainingMonths)
                  }); 
                  setApuracaoModal(null); 
-               }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition"><Zap className="w-4 h-4 inline mr-2"/>Decretar Efeito</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Criar Template RESTAURADO E COMPLETO */}
-      {modalTpl && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 p-6 rounded-xl w-full max-w-lg border border-gray-600 shadow-2xl">
-             <h3 className="text-xl font-bold mb-4 text-white border-b border-gray-700 pb-2">Novo Modelo de Documento</h3>
-             
-             <div className="flex gap-2 mb-4 mt-1">
-               <div className="flex-1">
-                 <label className="text-xs text-gray-400 uppercase font-bold">Poder / Aba</label>
-                 <select value={tplData.branch} onChange={e => {
-                    const branch = e.target.value;
-                    let cat = 'pl';
-                    if (branch === 'executivo') cat = 'decreto';
-                    if (branch === 'judiciario') cat = 'sentenca';
-                    setTplData({...tplData, branch, category: cat, isBudget: false});
-                 }} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
-                   <option value="legislativo">Legislativo</option>
-                   <option value="executivo">Executivo</option>
-                   <option value="judiciario">Judiciário</option>
-                 </select>
-               </div>
-               
-               <div className="flex-1">
-                 <label className="text-xs text-gray-400 uppercase font-bold">Categoria (Regras)</label>
-                 <select value={tplData.category} onChange={e => { 
-                    const val = e.target.value; 
-                    setTplData({...tplData, category: val, isBudget: val === 'loa'}); 
-                 }} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
-                   {tplData.branch === 'legislativo' && (
-                     <>
-                       <option value="pl">Proj. Lei Ordinária (PL)</option>
-                       <option value="pec">Emenda Constitucional (PEC)</option>
-                       <option value="loa">Lei Orçamentária (LOA)</option>
-                       <option value="decreto_legislativo">Decreto Legislativo</option>
-                     </>
-                   )}
-                   {tplData.branch === 'executivo' && (
-                     <>
-                       <option value="decreto">Decreto Presidencial</option>
-                       <option value="portaria">Portaria Ministerial</option>
-                     </>
-                   )}
-                   {tplData.branch === 'judiciario' && (
-                     <option value="sentenca">Sentença / Súmula</option>
-                   )}
-                 </select>
-               </div>
-             </div>
-
-             <div className="flex gap-2 mb-4">
-               <div className="flex-1">
-                 <input placeholder="Nome (Ex: Proj. Lei)" onChange={e => setTplData({...tplData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" />
-               </div>
-               <div className="w-1/3">
-                 <input placeholder="Sigla (Ex: PL)" onChange={e => setTplData({...tplData, abbreviation: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" />
-               </div>
-             </div>
-             
-             <textarea rows={5} placeholder="Corpo Padrão do Documento (Opcional)..." onChange={e => setTplData({...tplData, bodyText: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mb-6 font-serif outline-none" />
-             
-             <div className="flex gap-2">
-               <button onClick={() => setModalTpl(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
-               <button onClick={() => { actions.saveTemplate(tplData); setModalTpl(false); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Salvar Modelo</button>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Nova Entidade/Estado */}
-      {modalState && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 p-6 rounded-xl w-full max-w-md border border-gray-600 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4 text-white border-b border-gray-700 pb-2">Nova Entidade / União</h3>
-            <select onChange={e => setStateData({...stateData, type: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mb-4 outline-none">
-              <option value="estadual">Estado (Unidade Federativa)</option><option value="federal">União (Governo Federal)</option>
-            </select>
-            <input placeholder="Nome (Ex: Minas Gerais)" onChange={e => setStateData({...stateData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mb-4 outline-none" />
-            <input type="number" placeholder="Orçamento Inicial Total (R$)" onChange={e => setStateData({...stateData, budget: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mb-4 outline-none" />
-            <div className="flex gap-2 mb-6">
-               <input type="number" placeholder="População" onChange={e => setStateData({...stateData, populacao: e.target.value})} className="w-1/2 bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" />
-               <input type="number" placeholder="PIB Anual (R$)" onChange={e => setStateData({...stateData, pib: e.target.value})} className="w-1/2 bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" />
-            </div>
-            <div className="flex gap-2">
-               <button onClick={() => setModalState(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
-               <button onClick={() => { actions.createState(stateData); setModalState(false); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Fundar Entidade</button>
+               }} className="flex-1 bg-indigo-600 text-white py-3 rounded font-bold shadow-lg transition hover:bg-indigo-500">Decretar Efeito</button>
             </div>
           </div>
         </div>
@@ -273,28 +200,14 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
 
       {/* MODAL: Hard Reset */}
       {hardResetModal && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 p-8 rounded-xl w-full max-w-md border-2 border-red-600 shadow-2xl">
-            <h3 className="text-2xl font-bold mb-4 text-red-500 border-b border-red-900/50 pb-2">⚠️ ATENÇÃO: HARD RESET</h3>
-            <p className="text-gray-300 text-sm mb-6">Esta ação irá apagar TODOS os documentos, projetos, decretos, orçamentos e reiniciar o país. Todos os jogadores perderão os cargos. <strong>Isto é irreversível.</strong></p>
-            
-            <label className="text-xs text-gray-400 uppercase font-bold">Nome do Novo País/União</label>
-            <input type="text" value={resetData.countryName} onChange={e => setResetData({...resetData, countryName: e.target.value})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 mb-4 outline-none" />
-            
-            <div className="flex gap-4 mb-6">
-              <div className="flex-1">
-                <label className="text-xs text-gray-400 uppercase font-bold">Mês Inicial</label>
-                <input type="number" min="1" max="12" value={resetData.startMonth} onChange={e => setResetData({...resetData, startMonth: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 outline-none" />
-              </div>
-              <div className="flex-1">
-                <label className="text-xs text-gray-400 uppercase font-bold">Ano Inicial</label>
-                <input type="number" value={resetData.startYear} onChange={e => setResetData({...resetData, startYear: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 outline-none" />
-              </div>
-            </div>
-
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-900 p-8 rounded-xl w-full max-w-md border-2 border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.3)]">
+            <h3 className="text-2xl font-bold mb-4 text-red-500 border-b border-red-900/50 pb-2">⚠️ ATENÇÃO: EXCLUSÃO TOTAL</h3>
+            <p className="text-gray-400 text-sm mb-6 leading-relaxed">Esta ação irá apagar **todos** os documentos, mandatos, estados e reiniciar o tempo do RPG. É o fim de uma era.</p>
+            <input type="text" value={resetData.countryName} onChange={e => setResetData({...resetData, countryName: e.target.value})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mb-4 outline-none" placeholder="Nome do Novo País" />
             <div className="flex gap-2">
-               <button onClick={() => setHardResetModal(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-800 rounded transition">Cancelar</button>
-               <button onClick={() => { actions.hardReset(resetData); setHardResetModal(false); }} className="flex-1 bg-red-600 hover:bg-red-500 text-white py-3 rounded font-bold shadow-lg transition">Destruir e Recriar Mundo</button>
+               <button onClick={() => setHardResetModal(false)} className="flex-1 py-3 text-gray-400 font-bold">Abortar</button>
+               <button onClick={() => { actions.hardReset(resetData); setHardResetModal(false); }} className="flex-1 bg-red-600 text-white py-3 rounded font-bold shadow-lg transition hover:bg-red-500">Destruir e Recriar</button>
             </div>
           </div>
         </div>

@@ -465,7 +465,7 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-          {activeTab === 'dados' && <DashboardView states={states} usersList={usersList} activeEffects={activeEffects} />}d
+          {activeTab === 'dados' && <DashboardView states={states} usersList={usersList} activeEffects={activeEffects} />}
           {activeTab === 'executivo' && <ExecutivoView profile={profile} states={states} decrees={decrees} projects={projects} templates={templates} usersList={usersList} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
           {activeTab === 'legislativo' && <LegislativoView profile={profile} projects={projects} liveSession={liveSession} templates={templates} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
           {activeTab === 'judiciario' && <JudiciarioView profile={profile} decisions={decisions} posses={posses} usersList={usersList} states={states} templates={templates} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
