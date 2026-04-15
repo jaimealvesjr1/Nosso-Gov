@@ -281,36 +281,55 @@ export default function App() {
       showToast("HARD RESET CONCLUÍDO COM SUCESSO!");
     },
 
-    // --- AVANÇO DE TEMPO (Agora guarda Histórico dos Gráficos) ---
     advanceTime: async () => {
       let nextMonth = gameTime.month + 1;
       let nextYear = gameTime.year;
-      if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+      if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear++;
+      }
 
       const updatedStates = JSON.parse(JSON.stringify(states));
       for (const effect of activeEffects) {
-        if (effect.remainingMonths > 0) {
-           const targetState = updatedStates.find((s:any) => s.id === effect.stateId);
-           if (targetState && targetState.indicators && targetState.indicators[effect.macro]) {
-             const currentVal = targetState.indicators[effect.macro][effect.micro] || 50;
-             targetState.indicators[effect.macro][effect.micro] = Math.max(0, Math.min(100, currentVal + effect.pointsPerMonth));
-           }
-           const newRemaining = effect.remainingMonths - 1;
-           if (newRemaining <= 0) await deleteDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id));
-           else await updateDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id), { remainingMonths: newRemaining });
+        const targetState = updatedStates.find((s: any) => s.id === effect.stateId);
+        
+        if (targetState) {
+          const currentVal = targetState.indicators[effect.macro][effect.micro] || 50;
+          const newVal = Math.max(0, Math.min(100, currentVal + effect.pointsPerMonth));
+          targetState.indicators[effect.macro][effect.micro] = newVal;
+
+          const newRemaining = effect.remainingMonths - 1;
+          if (newRemaining <= 0) {
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id));
+          } else {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id), { 
+              remainingMonths: newRemaining 
+            });
+          }
         }
       }
-      
-      for (const s of updatedStates) { 
-        if (s.indicators !== undefined) {
-          const snapshot = { month: gameTime.month, year: gameTime.year, indicators: JSON.parse(JSON.stringify(s.indicators)) };
-          const newHistory = [...(s.history || []), snapshot];
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'states', s.id), { indicators: s.indicators, history: newHistory }); 
-        }
+
+      for (const s of updatedStates) {
+        const snapshot = {
+          month: gameTime.month,
+          year: gameTime.year,
+          indicators: JSON.parse(JSON.stringify(s.indicators))
+        };
+
+        const newHistory = [...(s.history || []), snapshot];
+
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'states', s.id), {
+          indicators: s.indicators,
+          history: newHistory
+        });
       }
-      
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), { month: nextMonth, year: nextYear });
-      showToast(`Tempo avançado para Mês ${nextMonth}/${nextYear}!`);
+
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), {
+        month: nextMonth,
+        year: nextYear
+      });
+
+      showToast(`Mês encerrado! Bem-vindo a ${nextMonth}/${nextYear}.`);
     },
 
     // --- FUNÇÕES DO EXECUTIVO E JUDICIÁRIO RESTAURADAS ---
