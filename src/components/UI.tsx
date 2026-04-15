@@ -32,15 +32,9 @@ export const getYear = () => new Date().getFullYear();
 
 export const formatRole = (role: string) => {
   const roles: Record<string, string> = {
-    espectador: 'Cidadão',
-    deputado: 'Deputado Federal',
-    presidente_congresso: 'Presidente do Congresso',
-    presidente_republica: 'Presidente da República',
-    governador: 'Governador(a)',
-    ministro_tse: 'Ministro do TSE',
-    stf: 'Ministro do STF',
-    ministro: 'Ministro de Estado',
-    admin: 'Mestre (Admin)'
+    espectador: 'Cidadão', deputado: 'Deputado Federal', presidente_congresso: 'Presidente do Congresso',
+    presidente_republica: 'Presidente da República', governador: 'Governador(a)',
+    ministro_tse: 'Ministro do TSE', stf: 'Ministro do STF', ministro: 'Ministro de Estado', admin: 'Mestre (Admin)'
   };
   return roles[role] || role;
 };

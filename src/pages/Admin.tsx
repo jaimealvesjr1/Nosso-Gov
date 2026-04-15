@@ -8,7 +8,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
   const [modalState, setModalState] = useState(false);
   const [modalTpl, setModalTpl] = useState(false);
   const [stateData, setStateData] = useState({ name: '', budget: '', populacao: '', pib: '', type: 'estadual' });
-  const [tplData, setTplData] = useState<any>({ branch: 'legislativo', isBudget: false });
+  const [tplData, setTplData] = useState<any>({ branch: 'legislativo', isBudget: false, category: 'pl' });
 
   const [apuracaoModal, setApuracaoModal] = useState<any>(null);
   const [effectForm, setEffectForm] = useState({ stateId: '', macro: 'saude', micro: '', pointsPerMonth: 0, remainingMonths: 1 });
@@ -28,6 +28,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
         <button onClick={() => setHardResetModal(true)} className="bg-red-900/80 hover:bg-red-800 text-red-200 px-4 py-2 rounded text-xs font-bold border border-red-700 transition">⚠️ Iniciar Nova Temporada (Hard Reset)</button>
       </div>
       
+      {/* Relógio do Jogo */}
       <div className="bg-emerald-900/20 border border-emerald-700 rounded-xl p-6 shadow-lg flex justify-between items-center">
          <div>
            <h3 className="text-2xl font-bold text-emerald-400 flex items-center"><Clock className="w-6 h-6 mr-3"/> Relógio do Jogo</h3>
@@ -38,6 +39,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
          </button>
       </div>
 
+      {/* Central de Apuração */}
       <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-lg">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center"><Target className="w-5 h-5 mr-2 text-indigo-400"/> Central de Apuração (Mestre)</h3>
         <p className="text-sm text-gray-400 mb-6">Julgue as intenções dos jogadores nos documentos finalizados e defina o impacto mecânico no jogo.</p>
@@ -55,7 +57,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
                   setEffectForm({
                     ...effectForm, 
                     macro: doc.intendedMacro || 'saude',
-                    stateId: doc.jurisdictionId || doc.loaDetails?.stateId || (states.length > 0 ? states[0].id : '')
+                    stateId: doc.jurisdictionId || doc.loaDetails?.stateId || (states.length > 0 ? states[0].id : 'federal')
                   }); 
                 }} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-sm text-white font-bold shadow-lg transition ml-4">
                   Julgar Efeito
@@ -66,23 +68,25 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
         </div>
       </div>
 
+      {/* Gestão de Modelos (Templates) */}
       <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl shadow-lg">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
            <h3 className="text-xl font-bold text-white">Modelos de Documentos Oficiais</h3>
-           <button onClick={() => {setTplData({ branch: 'legislativo', isBudget: false }); setModalTpl(true);}} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white text-sm font-bold shadow-lg transition">+ Criar Modelo</button>
+           <button onClick={() => {setTplData({ branch: 'legislativo', isBudget: false, category: 'pl' }); setModalTpl(true);}} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white text-sm font-bold shadow-lg transition">+ Criar Modelo</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
            {templates.map((t: DocTemplate) => (
              <div key={t.id} className="bg-gray-900 p-4 rounded-lg border border-gray-700 relative group shadow-sm">
                 <button onClick={() => actions.deleteTemplate(t.id)} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 className="w-4 h-4"/></button>
-                <span className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded uppercase border border-gray-700">{t.branch}</span>
+                <span className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded uppercase border border-gray-700 mr-2">{t.branch}</span>
+                <span className="text-xs bg-gray-800 text-indigo-400 px-2 py-1 rounded uppercase border border-gray-700">{t.category}</span>
                 <h4 className="text-white font-bold mt-3">{t.name} ({t.abbreviation})</h4>
-                {t.isBudget && <span className="text-xs font-bold text-green-400 mt-2 block bg-green-900/30 px-2 py-1 rounded w-max border border-green-900/50">Modelo Orçamentário (LOA)</span>}
              </div>
            ))}
         </div>
       </div>
 
+      {/* Controle de Jogadores */}
       <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl overflow-x-auto shadow-lg">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
            <h3 className="text-xl font-bold text-white">Controle de Jogadores Rápidos</h3>
@@ -126,6 +130,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
         <button onClick={() => setModalState(true)} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-bold shadow-lg transition">Criar Entidade / Estado</button>
       </div>
 
+      {/* MODAL: Apuração de Efeitos */}
       {apuracaoModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 p-6 rounded-xl w-full max-w-lg border border-indigo-600 shadow-2xl">
@@ -135,8 +140,8 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
             <div className="bg-gray-900 p-4 rounded mb-4 border border-gray-700">
               <label className="text-xs text-gray-400 uppercase font-bold">Estado Alvo do Impacto</label>
               <select value={effectForm.stateId} onChange={e => setEffectForm({...effectForm, stateId: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 mb-4 outline-none">
-                 {states.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                  <option value="federal">União Federal (Geral)</option>
+                 {states.map((s:any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
 
               <label className="text-xs text-gray-400 uppercase font-bold">Macro Área</label>
@@ -146,7 +151,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
               
               <label className="text-xs text-gray-400 uppercase font-bold">Micro Dado Específico</label>
               <select value={effectForm.micro} onChange={e => setEffectForm({...effectForm, micro: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 mb-4 outline-none">
-                 <option value="">-- Selecione o dado que vai alterar --</option>
+                 <option value="">-- Selecione o dado --</option>
                  {TAXONOMY[effectForm.macro as MacroArea]?.map(micro => <option key={micro} value={micro}>{micro}</option>)}
               </select>
 
@@ -154,7 +159,6 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
                 <div className="flex-1">
                   <label className="text-xs text-gray-400 uppercase font-bold">Pontos por Mês</label>
                   <input type="number" placeholder="Ex: 5 (ou -3)" value={effectForm.pointsPerMonth} onChange={e => setEffectForm({...effectForm, pointsPerMonth: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none"/>
-                  <span className="text-xs text-gray-500 mt-1 block">Positivo ou Negativo</span>
                 </div>
                 <div className="flex-1">
                   <label className="text-xs text-gray-400 uppercase font-bold">Duração (Meses)</label>
@@ -177,36 +181,75 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
         </div>
       )}
 
+      {/* MODAL: Criar Template RESTAURADO E COMPLETO */}
       {modalTpl && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="flex gap-2 mb-4 mt-1">
+          <div className="bg-gray-800 p-6 rounded-xl w-full max-w-lg border border-gray-600 shadow-2xl">
+             <h3 className="text-xl font-bold mb-4 text-white border-b border-gray-700 pb-2">Novo Modelo de Documento</h3>
+             
+             <div className="flex gap-2 mb-4 mt-1">
                <div className="flex-1">
                  <label className="text-xs text-gray-400 uppercase font-bold">Poder / Aba</label>
-                 <select value={tplData.branch} onChange={e => setTplData({...tplData, branch: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
+                 <select value={tplData.branch} onChange={e => {
+                    const branch = e.target.value;
+                    let cat = 'pl';
+                    if (branch === 'executivo') cat = 'decreto';
+                    if (branch === 'judiciario') cat = 'sentenca';
+                    setTplData({...tplData, branch, category: cat, isBudget: false});
+                 }} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
                    <option value="legislativo">Legislativo</option>
                    <option value="executivo">Executivo</option>
                    <option value="judiciario">Judiciário</option>
                  </select>
                </div>
+               
                <div className="flex-1">
                  <label className="text-xs text-gray-400 uppercase font-bold">Categoria (Regras)</label>
-                 <select value={tplData.category} onChange={e => {
-                    const val = e.target.value;
-                    setTplData({...tplData, category: val, isBudget: val === 'loa'});
+                 <select value={tplData.category} onChange={e => { 
+                    const val = e.target.value; 
+                    setTplData({...tplData, category: val, isBudget: val === 'loa'}); 
                  }} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none">
-                   <option value="pl">Proj. Lei Ordinária (PL)</option>
-                   <option value="pec">Emenda Constitucional (PEC)</option>
-                   <option value="loa">Lei Orçamentária (LOA)</option>
-                   <option value="decreto_legislativo">Decreto Legislativo</option>
-                   <option value="decreto">Decreto Presidencial</option>
-                   <option value="portaria">Portaria Ministerial</option>
-                   <option value="sentenca">Sentença/Súmula</option>
+                   {tplData.branch === 'legislativo' && (
+                     <>
+                       <option value="pl">Proj. Lei Ordinária (PL)</option>
+                       <option value="pec">Emenda Constitucional (PEC)</option>
+                       <option value="loa">Lei Orçamentária (LOA)</option>
+                       <option value="decreto_legislativo">Decreto Legislativo</option>
+                     </>
+                   )}
+                   {tplData.branch === 'executivo' && (
+                     <>
+                       <option value="decreto">Decreto Presidencial</option>
+                       <option value="portaria">Portaria Ministerial</option>
+                     </>
+                   )}
+                   {tplData.branch === 'judiciario' && (
+                     <option value="sentenca">Sentença / Súmula</option>
+                   )}
                  </select>
                </div>
              </div>
+
+             <div className="flex gap-2 mb-4">
+               <div className="flex-1">
+                 <input placeholder="Nome (Ex: Proj. Lei)" onChange={e => setTplData({...tplData, name: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" />
+               </div>
+               <div className="w-1/3">
+                 <input placeholder="Sigla (Ex: PL)" onChange={e => setTplData({...tplData, abbreviation: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded outline-none" />
+               </div>
+             </div>
+             
+             <textarea rows={5} placeholder="Corpo Padrão do Documento (Opcional)..." onChange={e => setTplData({...tplData, bodyText: e.target.value})} className="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded mb-6 font-serif outline-none" />
+             
+             <div className="flex gap-2">
+               <button onClick={() => setModalTpl(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
+               <button onClick={() => { actions.saveTemplate(tplData); setModalTpl(false); }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Salvar Modelo</button>
+             </div>
+          </div>
         </div>
       )}
 
+      {/* MODAL: Nova Entidade/Estado */}
       {modalState && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 p-6 rounded-xl w-full max-w-md border border-gray-600 shadow-2xl">
@@ -227,6 +270,8 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
           </div>
         </div>
       )}
+
+      {/* MODAL: Hard Reset */}
       {hardResetModal && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-900 p-8 rounded-xl w-full max-w-md border-2 border-red-600 shadow-2xl">

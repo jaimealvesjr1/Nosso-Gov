@@ -4,12 +4,8 @@ import { onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEma
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore';
 
 import { auth, db, APP_ID } from './config/firebase';
-import { 
-  UserProfile, RpgData, RpgProject, StfDecision, LoaArticle, 
-  DocTemplate, RpgDecree, ProjectArticle, TAXONOMY, GameTime, 
-  GameEffect, ProjectAmendment, DecreeAction 
-} from './types';
-import { NavButton } from './components/UI';
+import { UserProfile, RpgData, RpgProject, StfDecision, LoaArticle, DocTemplate, RpgDecree, ProjectArticle, TAXONOMY, GameTime, GameEffect, ProjectAmendment, DecreeAction } from './types';
+import { NavButton, formatRole } from './components/UI';
 
 import { DashboardView } from './pages/Dashboard';
 import { LegislativoView } from './pages/Legislativo';
@@ -92,7 +88,9 @@ export default function App() {
       
       const newProject: any = {
         sequentialNumber: nextNum, title: formData.title, category: cat,
-        templateName: template?.name || 'Projeto', templateAbbreviation: template?.abbreviation || 'PROJ',
+        templateName: template?.name || 'Projeto', 
+        templateAbbreviation: template?.abbreviation || 'PROJ',
+        templateBodyText: template?.bodyText || '',
         artigos: artigos.filter(a => (a.text || '').trim() !== ''),
         justificativa: formData.justificativa || '', intendedMacro: formData.intendedMacro || '', apurado: false,
         authorId: profile.id, authorName: profile.discordUsername, status: 'proposto', votes: {}, createdAt: serverTimestamp(),
@@ -109,10 +107,36 @@ export default function App() {
       showToast("Documento Protocolado!");
     },
     
+    changeStatus: async (projectId: string, newStatus: string) => {
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus });
+    },
+
     vote: async (id: string, vote: string) => {
       if (!profile) return;
       const p = projects.find(x => x.id === id);
       if (p) await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', id), { votes: { ...p.votes, [profile.id]: vote } });
+    },
+
+    proporEmenda: async (projectId: string, text: string, loaChange?: any) => {
+      if(!profile) return;
+      const p = projects.find(x => x.id === projectId);
+      if(!p) return;
+      const newAmendment: any = {
+        id: generateId(), authorName: profile.discordUsername, text, status: 'proposta', votes: {}
+      };
+      if (loaChange) newAmendment.loaChange = loaChange;
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: [...(p.amendments || []), newAmendment] });
+      showToast("Emenda Protocolada!");
+    },
+
+    voteEmenda: async (projectId: string, amendaId: string, vote: string) => {
+      const p = projects.find(x => x.id === projectId);
+      if(!p || !profile) return;
+      const updated = (p.amendments||[]).map((am: any) => {
+        if(am.id === amendaId) return { ...am, votes: { ...am.votes, [profile.id]: vote } };
+        return am;
+      });
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: updated });
     },
     
     encerrarVotacao: async (projectId: string, isVetoVote: boolean = false) => {
@@ -126,28 +150,26 @@ export default function App() {
         await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus, votes: {} });
         showToast(sim > nao ? "Veto Derrubado! Promulgado." : "Veto Mantido! Arquivado.");
       } else {
+        // Apura as Emendas automaticamente baseando-se nos votos
         const updatedAmendments = (p.amendments || []).map((am: any) => {
           const amSim = Object.values(am.votes || {}).filter(v => v === 'sim').length;
           const amNao = Object.values(am.votes || {}).filter(v => v === 'nao').length;
           return { ...am, status: amSim > amNao ? 'aprovada' : 'rejeitada' };
         });
 
-        // LÓGICA DE APROVAÇÃO (Maioria Simples vs Qualificada)
         let aprovado = false;
         if (p.category === 'pec') {
-          // PEC: Requer 3/5 (60%) dos parlamentares ativos
           const totalDeputados = usersList.filter((u:any) => u.role === 'deputado' || u.role === 'presidente_congresso').length;
-          const requiredVotes = Math.max(1, Math.ceil(totalDeputados * 0.6));
+          const requiredVotes = Math.max(1, Math.ceil(totalDeputados * 0.6)); // 3/5
           aprovado = sim >= requiredVotes;
-          if(!aprovado) showToast(`PEC Rejeitada. Faltaram votos (Mínimo: ${requiredVotes}).`);
+          if(!aprovado) showToast(`PEC Rejeitada. Requer ${requiredVotes} votos.`);
         } else {
-          // PL, LOA, Decreto Legislativo: Maioria Simples
           aprovado = sim > nao;
         }
 
         if (aprovado) {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: 'redacao_final', votes: {}, amendments: updatedAmendments });
-          showToast("Aprovado! Aguardando Redação Final pelo Pres. do Congresso.");
+          showToast("Aprovado! Aguardando Redação Final.");
         } else {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: 'arquivo', votes: {}, amendments: updatedAmendments });
           if(p.category !== 'pec') showToast("Projeto Rejeitado e Arquivado.");
@@ -155,114 +177,37 @@ export default function App() {
       }
     },
 
+    enviarParaSancao: async (projectId: string, artigosEditados: any[], loaEditada: any) => {
+       const payload: any = { status: 'sancao', artigos: artigosEditados };
+       if (loaEditada) payload.loaDetails = loaEditada;
+       await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), payload);
+       showToast("Redação Concluída! Enviado para Sanção.");
+    },
+
     promulgarProjeto: async (projectId: string, artigosEditados: any[], loaEditada?: any) => {
        const payload: any = { status: 'promulgado', artigos: artigosEditados };
        if (loaEditada) payload.loaDetails = loaEditada;
        await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), payload);
-       showToast("Redação Concluída! Documento PROMULGADO pelo Congresso.");
+       showToast("Promulgado com Sucesso pelo Congresso!");
     },
 
-    changeStatus: async (projectId: string, newStatus: string) => {
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus });
-    },
-
-    proporEmenda: async (projectId: string, text: string, loaChange?: any) => {
-      if(!profile) return;
-      const p = projects.find(x => x.id === projectId);
-      if(!p) return;
-      const newAmendment: any = {
-        id: Math.random().toString(36).substr(2, 9),
-        authorName: profile.discordUsername,
-        text,
-        status: 'proposta',
-        votes: {}
-      };
-      if (loaChange) newAmendment.loaChange = loaChange;
-      
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), {
-        amendments: [...(p.amendments || []), newAmendment]
-      });
-      showToast("Emenda protocolada ao projeto!");
-    },
-
-    voteEmenda: async (projectId: string, amendaId: string, vote: string) => {
-      const p = projects.find(x => x.id === projectId);
-      if(!p || !profile) return;
-      const updated = (p.amendments||[]).map((am: any) => {
-        if(am.id === amendaId) return { ...am, votes: { ...am.votes, [profile.id]: vote } };
-        return am;
-      });
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: updated });
-    },
-
-    decidirEmenda: async (projectId: string, amendaId: string, approved: boolean) => {
-      const p = projects.find(x => x.id === projectId);
-      if(!p) return;
-      
-      let updatedLoaDetails = p.loaDetails;
-      let updatedArtigos = p.artigos;
-
-      const updated = (p.amendments||[]).map((am: any) => {
-        if(am.id === amendaId) {
-          if (approved && am.loaChange && updatedLoaDetails) {
-             const existsIndex = updatedLoaDetails.artigos.findIndex((a:any) => a.pastaName === am.loaChange.pastaName && a.customName === am.loaChange.customName);
-             if (existsIndex >= 0) {
-                updatedLoaDetails.artigos[existsIndex].percentage = am.loaChange.newPercentage;
-             } else {
-                updatedLoaDetails.artigos.push({ pastaName: am.loaChange.pastaName, customName: am.loaChange.customName, percentage: am.loaChange.newPercentage });
-             }
-
-             const toRoman = (num: number) => { const r = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"]; return r[num] || String(num); };
-             const distText = updatedLoaDetails.artigos.map((a:any, i:number) => `${toRoman(i+1)}. ${(a.pastaName === 'outro' ? (a.customName||'RESERVA') : a.pastaName).toUpperCase()} - ${a.percentage}%`).join('\n');
-             updatedArtigos = updatedArtigos.map((a:any) => a.id === 1 ? { ...a, text: `Fica aprovado o Orçamento com a seguinte distribuição:\n${distText}` } : a);
-          }
-          return { ...am, status: approved ? 'aprovada' : 'rejeitada' };
-        }
-        return am;
-      });
-
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { 
-          amendments: updated,
-          loaDetails: updatedLoaDetails || null,
-          artigos: updatedArtigos || p.artigos
-      });
-      showToast(approved ? "Emenda aprovada e incorporada à Lei!" : "Emenda rejeitada.");
-    },
-
+    // === EXECUTIVO ===
     publishDecreto: async (data: any, actionsList: DecreeAction[]) => {
       if (!profile) return;
-      
       const targetStateId = data.stateId || profile.jurisdictionId || 'federal';
 
       for (const act of actionsList) {
-        if (act.type === 'nomeacao') {
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'users', act.userId), { 
-            role: 'ministro', 
-            jurisdictionId: targetStateId,
-            pastaId: act.pastaName 
-          });
-        } else if (act.type === 'exoneracao') {
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'users', act.userId), { 
-            role: 'espectador', 
-            pastaId: null 
-          });
-        }
+        if (act.type === 'nomeacao') await updateDoc(doc(db, 'artifacts', APP_ID, 'users', act.userId), { role: 'ministro', jurisdictionId: targetStateId, pastaId: act.pastaName });
+        else if (act.type === 'exoneracao') await updateDoc(doc(db, 'artifacts', APP_ID, 'users', act.userId), { role: 'espectador', pastaId: null });
       }
       
       const nextNum = decrees.length > 0 ? Math.max(...decrees.map(d => d.sequentialNumber)) + 1 : 1;
       await setDoc(doc(db, 'artifacts', APP_ID, 'decrees', generateId()), {
-        sequentialNumber: nextNum,
-        title: data.title || "Decreto Executivo",
-        content: data.content || "",
-        actions: actionsList || [],
-        justificativa: data.justificativa || '',
-        intendedMacro: data.intendedMacro || '',
-        apurado: false,
-        authorName: profile.discordUsername,
-        jurisdictionId: targetStateId,
-        createdAt: serverTimestamp()
+        sequentialNumber: nextNum, title: data.title || "Documento Executivo", content: data.content || "",
+        category: data.category || 'decreto', actions: actionsList || [], justificativa: data.justificativa || '', intendedMacro: data.intendedMacro || '',
+        apurado: false, authorName: profile.discordUsername, jurisdictionId: targetStateId, year: gameTime.year, createdAt: serverTimestamp()
       });
-      showToast(`Decreto nº ${nextNum} publicado com sucesso!`);
+      showToast(`Documento nº ${nextNum} publicado!`);
     },
 
     analisarSancao: async (projectId: string, artigosVetadosIds: number[]) => {
@@ -292,54 +237,58 @@ export default function App() {
       const state = states.find(s => s.id === stateId);
       const currentBudget = state?.allocatedBudget?.[pastaName] || 0;
       if (!state || currentBudget < amount) return showToast("Verba Insuficiente.");
+      
       const newBudget = { ...state.allocatedBudget, [pastaName]: currentBudget - amount };
-      const newIndicators = JSON.parse(JSON.stringify(state.indicators));
+      const newIndicators = JSON.parse(JSON.stringify(state.indicators || {}));
       const totalPoints = Math.floor(amount / 100000) * 2;
       const micros = Object.keys(newIndicators[pastaName] || {});
+      
       if (micros.length > 0 && totalPoints > 0) {
         const pointsPerMicro = Math.max(1, Math.floor(totalPoints / micros.length));
         micros.forEach(micro => { newIndicators[pastaName][micro] = Math.min(100, (newIndicators[pastaName][micro] || 50) + pointsPerMicro); });
       }
       await updateDoc(doc(db, 'artifacts', APP_ID, 'states', stateId), { allocatedBudget: newBudget, indicators: newIndicators });
-      showToast(`Investimento efetuado!`);
+      showToast(`Investimento de R$ ${(amount/1000).toFixed(0)}k efetuado!`);
     },
 
+    // === JUDICIÁRIO E ADMIN ===
     diplomar: async (listaDiplomados: any[]) => {
       if(!listaDiplomados || listaDiplomados.length === 0) return showToast("Lista vazia!");
-      
-      const currentYear = new Date().getFullYear();
-      // FIX Fase 1.2: Calcula o número sequencial da Sentença
       const nextNum = decisions.length > 0 ? Math.max(...decisions.map((d:any) => d.sequentialNumber || 0)) + 1 : 1;
-
       let content = "A Justiça Eleitoral certifica a diplomação oficial dos seguintes eleitos para seus respectivos mandatos:\n\n";
-
-      // Usando uma cópia rápida do mapeamento de cargos para não precisar importar
-      const roleNames: any = { deputado: 'Deputado Federal', presidente_congresso: 'Presidente do Congresso', presidente_republica: 'Presidente da República', governador: 'Governador(a)', ministro_tse: 'Ministro do TSE', stf: 'Ministro do STF' };
 
       for (let i = 0; i < listaDiplomados.length; i++) {
         const item = listaDiplomados[i];
         const electedUser = usersList.find(u => u.id === item.userId);
         const targetState = states.find(s => s.id === item.jurisdictionId);
-        
         await updateDoc(doc(db, 'artifacts', APP_ID, 'users', item.userId), { role: item.role, jurisdictionId: item.jurisdictionId, pastaId: null });
-        
-        content += `Art. ${i + 1}º - O Sr(a). ${electedUser?.discordUsername} assume oficialmente o cargo de ${roleNames[item.role] || item.role.toUpperCase()} pela jurisdição de ${targetState?.name || 'União Federal'}.\n`;
+        content += `Art. ${i + 1}º - O Sr(a). ${electedUser?.discordUsername} assume oficialmente o cargo de ${formatRole(item.role).toUpperCase()} pela jurisdição de ${targetState?.name || 'União Federal'}.\n`;
       }
 
       await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { 
-        sequentialNumber: nextNum, // Salva o número sequencial
-        authorName: 'Tribunal Superior Eleitoral', 
-        title: `DIPLOMAÇÃO GERAL Nº ${nextNum}/${currentYear}`, 
-        content, 
-        createdAt: serverTimestamp() 
+        sequentialNumber: nextNum, year: gameTime.year,
+        authorName: 'Tribunal Superior Eleitoral', title: `DIPLOMAÇÃO GERAL Nº ${nextNum}/${gameTime.year}`, 
+        content, createdAt: serverTimestamp() 
       });
       showToast("Eleitos Diplomados com Sucesso!");
+    },
+
+    emitirSentenca: async (data: {title: string, content: string}) => {
+      if(!profile) return;
+      const nextNum = decisions.length > 0 ? Math.max(...decisions.map((d:any) => d.sequentialNumber || 0)) + 1 : 1;
+      await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { 
+        sequentialNumber: nextNum, year: gameTime.year,
+        authorName: profile.discordUsername, title: `${data.title} Nº ${nextNum}/${gameTime.year}`, 
+        content: data.content, createdAt: serverTimestamp() 
+      });
+      showToast("Sentença Publicada!");
     },
 
     advanceTime: async () => {
       let nextMonth = gameTime.month + 1;
       let nextYear = gameTime.year;
       if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+
       const updatedStates = JSON.parse(JSON.stringify(states));
       for (const effect of activeEffects) {
         if (effect.remainingMonths > 0) {
@@ -355,62 +304,35 @@ export default function App() {
       }
       for (const s of updatedStates) { if (s.indicators !== undefined) await updateDoc(doc(db, 'artifacts', APP_ID, 'states', s.id), { indicators: s.indicators }); }
       await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), { month: nextMonth, year: nextYear });
-      showToast(`Mês ${nextMonth}/${nextYear}!`);
+      showToast(`Tempo avançado para Mês ${nextMonth}/${nextYear}!`);
     },
 
-    emitirSentenca: async (data: {title: string, content: string}) => {
-      if(!profile) return;
-      await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { authorName: profile.discordUsername, title: data.title, content: data.content, createdAt: serverTimestamp() });
-    },
-    updateUser: async (userId: string, newRole: string, newJurisdiction: string, newPasta: string) => { await updateDoc(doc(db, 'artifacts', APP_ID, 'users', userId), { role: newRole, jurisdictionId: newJurisdiction || 'federal', pastaId: newPasta || null }); },
-    createState: async (data: any) => {
-      if(!data.name) return;
-      const initialIndicators: any = {};
-      Object.entries(TAXONOMY).forEach(([macro, micros]) => { initialIndicators[macro] = {}; micros.forEach(m => initialIndicators[macro][m] = 50); });
-      await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), { 
-        name: data.name, type: data.type || 'estadual', 
-        macro: { populacao: Number(data.populacao)||0, pib: Number(data.pib)||0, aprovacao: 50, caixa: Number(data.budget)||1000000 },
-        indicators: initialIndicators, allocatedBudget: {} 
-      });
-    },
-    saveTemplate: async (data: any) => { await setDoc(doc(db, 'artifacts', APP_ID, 'templates', data.id || generateId()), data); },
-    deleteTemplate: async (id: string) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'templates', id)); },
+    updateUser: async (userId: string, newRole: string, newJurisdiction: string, newPasta: string) => { await updateDoc(doc(db, 'artifacts', APP_ID, 'users', userId), { role: newRole, jurisdictionId: newJurisdiction || 'federal', pastaId: newPasta || null }); showToast("Jogador atualizado!"); },
+    saveTemplate: async (data: any) => { await setDoc(doc(db, 'artifacts', APP_ID, 'templates', data.id || generateId()), data); showToast("Modelo Salvo!"); },
+    deleteTemplate: async (id: string) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'templates', id)); showToast("Modelo removido."); },
     apurarDocumento: async (col: 'projects'|'decrees', docId: string, effectData: any) => {
       if(effectData.pointsPerMonth !== 0) await setDoc(doc(db, 'artifacts', APP_ID, 'effects', generateId()), { ...effectData, isPositive: effectData.pointsPerMonth > 0 });
-      await updateDoc(doc(db, 'artifacts', APP_ID, col, docId), { apurado: true });
+      await updateDoc(doc(db, 'artifacts', APP_ID, col, docId), { apurado: true }); showToast("Efeito Apurado!");
     },
+
     hardReset: async (data: { countryName: string, startMonth: number, startYear: number }) => {
       if (profile?.role !== 'admin') return;
-      
-      // 1. Apaga todas as coleções antigas
       const collectionsToClear = ['projects', 'decrees', 'judiciary', 'effects', 'states'];
       for (const colName of collectionsToClear) {
         const snap = await getDocs(collection(db, 'artifacts', APP_ID, colName));
         snap.forEach(d => deleteDoc(doc(db, 'artifacts', APP_ID, colName, d.id)));
       }
-
-      // 2. Cria o País/União Federal Base
       const initialIndicators: any = {};
-      Object.entries(TAXONOMY).forEach(([macro, micros]) => {
-        initialIndicators[macro] = {};
-        micros.forEach(m => initialIndicators[macro][m] = 50);
-      });
+      Object.entries(TAXONOMY).forEach(([macro, micros]) => { initialIndicators[macro] = {}; micros.forEach(m => initialIndicators[macro][m] = 50); });
       await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), {
-        name: data.countryName, type: 'federal',
-        macro: { populacao: 0, pib: 0, aprovacao: 50, caixa: 10000000 },
+        name: data.countryName, type: 'federal', macro: { populacao: 0, pib: 0, aprovacao: 50, caixa: 10000000 },
         indicators: initialIndicators, allocatedBudget: {}
       });
-
-      // 3. Reseta os cargos dos jogadores (exceto o Admin atual)
       for (const u of usersList) {
-        if (u.role !== 'admin') {
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'users', u.id), { role: 'espectador', jurisdictionId: 'federal', pastaId: null });
-        }
+        if (u.role !== 'admin') await updateDoc(doc(db, 'artifacts', APP_ID, 'users', u.id), { role: 'espectador', jurisdictionId: 'federal', pastaId: null });
       }
-
-      // 4. Reseta o Relógio do Jogo
       await setDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), { month: Number(data.startMonth), year: Number(data.startYear) });
-      showToast("HARD RESET CONCLUÍDO! O país foi reiniciado.");
+      showToast("HARD RESET CONCLUÍDO!");
     }
   };
 
@@ -421,7 +343,7 @@ export default function App() {
         <div className="bg-gray-800 p-8 rounded-xl max-w-md w-full shadow-2xl">
           <div className="flex justify-center mb-6"><Landmark className="w-16 h-16 text-indigo-500" /></div>
           <h2 className="text-2xl font-bold text-center text-white mb-2">Acesso Restrito</h2>
-          <p className="text-gray-400 text-sm mb-6">Nosso Governo Virtual</p>
+          <p className="text-gray-400 text-center text-sm mb-6">Nosso Governo Virtual</p>
           <div className="flex mb-6 border-b border-gray-700">
             <button onClick={() => setIsLoginMode(true)} className={`flex-1 pb-2 font-bold ${isLoginMode ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-500'}`}>Entrar</button>
             <button onClick={() => setIsLoginMode(false)} className={`flex-1 pb-2 font-bold ${!isLoginMode ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-gray-500'}`}>Criar Conta</button>
@@ -453,13 +375,13 @@ export default function App() {
           <div className="hidden md:block p-4 border-b border-gray-700 bg-gray-900/50">
             <p className="text-sm text-gray-400">Logado como:</p>
             <p className="font-bold text-indigo-300">{profile.discordUsername}</p>
-            <span className="inline-block mt-1 px-2 py-0.5 bg-gray-700 text-xs rounded-full uppercase border border-gray-600">{profile.role.replace('_', ' ')}</span>
+            <span className="inline-block mt-1 px-2 py-0.5 bg-gray-700 text-xs rounded-full uppercase border border-gray-600">{formatRole(profile.role)}</span>
           </div>
         )}
         <div className="flex md:flex-col overflow-x-auto p-2 gap-2 flex-1">
           <NavButton icon={Activity} label="Dados & Nação" active={activeTab === 'dados'} onClick={() => setActiveTab('dados')} />
           <NavButton icon={FileText} label="Congresso" active={activeTab === 'legislativo'} onClick={() => setActiveTab('legislativo')} />
-          <NavButton icon={DollarSign} label="Executivo" active={activeTab === 'executivo'} onClick={() => setActiveTab('executivo')} />
+          <NavButton icon={DollarSign} label="Governo Exec." active={activeTab === 'executivo'} onClick={() => setActiveTab('executivo')} />
           <NavButton icon={Scale} label="Justiça / TSE" active={activeTab === 'judiciario'} onClick={() => setActiveTab('judiciario')} />
           {profile?.role === 'admin' && <NavButton icon={Settings} label="Mestre (Admin)" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
         </div>
@@ -470,12 +392,11 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto pb-20 md:pb-0"><div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
         {activeTab === 'dados' && <DashboardView states={states} usersList={usersList} />}
-        {activeTab === 'legislativo' && <LegislativoView profile={profile} projects={projects} states={states} templates={templates} actions={gameActions} />}
-        {activeTab === 'executivo' && <ExecutivoView profile={profile} states={states} usersList={usersList} decrees={decrees} templates={templates} projects={projects} actions={gameActions} />}
-        {activeTab === 'judiciario' && <JudiciarioView profile={profile} decisions={decisions} states={states} usersList={usersList} templates={templates} actions={gameActions} />}
+        {activeTab === 'legislativo' && <LegislativoView profile={profile} projects={projects} states={states} templates={templates} actions={gameActions} gameTime={gameTime} />}
+        {activeTab === 'executivo' && <ExecutivoView profile={profile} states={states} usersList={usersList} decrees={decrees} templates={templates} projects={projects} actions={gameActions} gameTime={gameTime} />}
+        {activeTab === 'judiciario' && <JudiciarioView profile={profile} decisions={decisions} states={states} usersList={usersList} templates={templates} actions={gameActions} gameTime={gameTime} />}
         {activeTab === 'admin' && profile?.role === 'admin' && <AdminView profile={profile} usersList={usersList} states={states} templates={templates} projects={projects} decrees={decrees} gameTime={gameTime} activeEffects={activeEffects} actions={gameActions} />}
       </div></main>
-      
       {toastMessage && <div className="fixed bottom-24 md:bottom-10 right-4 md:right-10 bg-indigo-600 px-6 py-4 rounded-lg shadow-2xl z-50 font-bold border border-indigo-400">{toastMessage}</div>}
     </div>
   );
