@@ -1,4 +1,5 @@
-export type Role = 'admin' | 'presidente_republica' | 'presidente_congresso' | 'deputado' | 'governador' | 'ministro' | 'ministro_tse' | 'stf' | 'espectador';
+export type Role = 'admin' | 'moderador' | 'presidente_republica' | 'presidente_congresso' | 'deputado' | 'governador' | 'ministro' | 'ministro_tse' | 'stf' | 'espectador';
+
 export type MacroArea = 'educacao' | 'saude' | 'seguranca' | 'economia' | 'infraestrutura' | 'meio_ambiente';
 
 export const TAXONOMY: Record<MacroArea, string[]> = {
@@ -9,14 +10,27 @@ export const TAXONOMY: Record<MacroArea, string[]> = {
   infraestrutura: ['Rodovias', 'Saneamento Básico', 'Matriz Energética', 'Habitação', 'Telecomunicações'],
   meio_ambiente: ['Conservação', 'Fiscalização', 'Gestão de Resíduos', 'Recursos Hídricos', 'Prevenção Climática']
 };
+export interface UserProfile { 
+  id: string; 
+  discordUsername: string; 
+  role: Role; 
+  jurisdictionId?: string; 
+  pastaId?: string | null; 
+  adminArea?: string;
+}
 
-export interface UserProfile { id: string; discordUsername: string; role: Role; jurisdictionId?: string; pastaId?: string | null; }
+export interface DataHistoryPoint {
+  month: number;
+  year: number;
+  indicators: Record<string, Record<string, number>>;
+}
 
 export interface RpgData {
   id: string; type: 'federal' | 'estadual'; name: string; 
   macro: { populacao: number; pib: number; aprovacao: number; caixa: number; };
   indicators: Record<string, Record<string, number>>;
   allocatedBudget: Record<string, number>;
+  history: DataHistoryPoint[];
 }
 
 export interface GameTime { month: number; year: number; }
@@ -42,20 +56,39 @@ export interface ProjectAmendment {
   loaChange?: { pastaName: string; customName?: string; newPercentage: number; }; 
 }
 
-export interface BaseDocument { justificativa: string; intendedMacro: string; apurado: boolean; year?: number; }
+export interface HiddenIntent {
+  targetMacro: string;
+  targetMicro: string;
+  description: string;
+}
+
+export interface BaseDocument { 
+  justificativa: string; 
+  intendedMacro: string; 
+  hiddenIntent?: HiddenIntent;
+  apurado: boolean; 
+  year?: number; 
+}
 
 export interface RpgProject extends BaseDocument {
   id: string; sequentialNumber: number; 
   category: 'loa' | 'pec' | 'pl' | 'decreto_legislativo' | 'geral';
-  templateName?: string; 
-  templateAbbreviation?: string; 
-  templateBodyText?: string;
+  templateName?: string; templateAbbreviation?: string; templateBodyText?: string;
   loaDetails?: { stateId: string; artigos: LoaArticle[]; };
   title: string; artigos: ProjectArticle[]; 
   authorId: string; authorName: string;
-  status: 'proposto' | 'pauta' | 'votacao' | 'redacao_final' | 'sancao' | 'sancionado' | 'vetado' | 'votacao_veto' | 'promulgado' | 'arquivo';
+  status: 'protocolado' | 'pauta' | 'em_votacao' | 'sancao' | 'sancionado' | 'vetado' | 'promulgado' | 'arquivo';
   votes: Record<string, 'sim' | 'nao' | 'abstencao'>; 
   amendments: ProjectAmendment[];
+  createdAt: any;
+}
+
+export interface LegSession {
+  id: string;
+  status: 'aberta_presenca' | 'em_curso' | 'encerrada';
+  presentDeputies: string[];
+  currentProjectVotingId?: string | null;
+  ata: { projectId: string; title: string; result: 'aprovado' | 'rejeitado' }[];
   createdAt: any;
 }
 
@@ -67,5 +100,15 @@ export interface RpgDecree extends BaseDocument {
   authorName: string; jurisdictionId: string; createdAt: any;
 }
 
-export interface RpgEvent { id: string; title: string; description: string; impact: string; createdAt: any; }
-export interface StfDecision { id: string; sequentialNumber?: number; year?: number; authorName: string; title: string; content: string; createdAt: any; }
+export interface TermoPosse {
+  id: string;
+  sequentialNumber: number;
+  startMonth: number; startYear: number;
+  endMonth: number; endYear: number;
+  eleitos: { userId: string; role: string; jurisdictionId: string }[];
+  createdAt: any;
+}
+
+export interface StfDecision extends BaseDocument { 
+  id: string; sequentialNumber?: number; year?: number; authorName: string; title: string; content: string; createdAt: any; 
+}

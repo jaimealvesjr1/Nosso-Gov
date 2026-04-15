@@ -54,8 +54,9 @@ export function JudiciarioView({ profile, decisions, usersList, states, template
                  <div className="flex gap-2">
                     <button onClick={() => setModalJud(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
                     <button onClick={() => { 
-                       // FIX: Mágica do Tribunal
-                       const finalContent = sentenca.templateBody.replace('{{TEXTO_JOGADOR}}', sentenca.userText);
+                       const templateLimpo = sentenca.templateBody.replace(/\\n/g, '\n');
+                       const finalContent = templateLimpo.replace('{{TEXTO_JOGADOR}}', sentenca.userText);
+                       
                        actions.emitirSentenca({ title: sentenca.title, content: finalContent }); 
                        setModalJud(false); 
                        setSentenca({ title: '', userText: '', templateBody: '' });

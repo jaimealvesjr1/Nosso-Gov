@@ -148,6 +148,14 @@ export function ExecutivoView({ profile, states, usersList, decrees, templates, 
                       </div>
                    </label>
                  ))}
+                 {modalSancao.amendments?.filter((am:any) => am.status === 'aprovada').length > 0 && (
+                 <div className="mt-4 pt-4 border-t border-gray-800">
+                   <p className="text-sm font-bold text-green-400 uppercase mb-2">Emendas Aprovadas Incorporadas:</p>
+                   {modalSancao.amendments.filter((am:any) => am.status === 'aprovada').map((am:any) => (
+                     <p key={am.id} className="text-sm text-gray-300 italic border-l-2 border-green-500 pl-2 mb-2">"{am.text}" — <span className="text-gray-500 font-normal">{am.authorName}</span></p>
+                   ))}
+                 </div>
+               )}
                </div>
             </div>
 
@@ -225,8 +233,8 @@ export function ExecutivoView({ profile, states, usersList, decrees, templates, 
                 <div className="flex gap-2">
                    <button onClick={() => setModalOpen(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
                    <button onClick={() => { 
-                     // FIX: Substitui a TAG pelo texto do jogador!
-                     const finalContent = decreto.templateBody.replace('{{TEXTO_JOGADOR}}', decreto.userText);
+                     const templateLimpo = decreto.templateBody.replace(/\\n/g, '\n');
+                     const finalContent = templateLimpo.replace('{{TEXTO_JOGADOR}}', decreto.userText);
                      
                      actions.publishDecreto({...decreto, content: finalContent}, actionsList); 
                      setModalOpen(false); 

@@ -1,266 +1,267 @@
 import React, { useState } from 'react';
-import { Plus, Gavel, Target, Trash2, Edit } from 'lucide-react';
-import { RpgProject, LoaArticle, DocTemplate, ProjectArticle, TAXONOMY } from '../types';
+import { Plus, Gavel, Trash2, Users, CheckCircle, XCircle } from 'lucide-react';
+import { RpgProject, DocTemplate, ProjectArticle, TAXONOMY, MacroArea } from '../types';
 
-export function LegislativoView({ profile, projects, states, templates, actions, gameTime }: any) {
+export function LegislativoView({ profile, projects, liveSession, templates, gameTime, showToast, actions }: any) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState<any>({ category: 'pl' });
+  const [formData, setFormData] = useState<any>({ category: 'pl', hiddenIntent: { targetMacro: 'economia', targetMicro: '', description: '' } });
   const [artigosText, setArtigosText] = useState<ProjectArticle[]>([{ id: 1, text: '', isVetoed: false }]);
-  const [loaArtigos, setLoaArtigos] = useState<LoaArticle[]>([{ pastaName: 'saude', percentage: 0 }]);
-  const [filterTab, setFilterTab] = useState<'tramitacao' | 'historico'>('tramitacao');
   
+  const [subTab, setSubTab] = useState<'protocolos' | 'tramitacao' | 'sessao' | 'historico'>('protocolos');
   const [emendaText, setEmendaText] = useState('');
-  const [emendaLoa, setEmendaLoa] = useState({ pastaName: 'saude', percentage: 0, customName: '' });
-
-  const [modalRedacao, setModalRedacao] = useState<RpgProject | null>(null);
-  const [redacaoArtigos, setRedacaoArtigos] = useState<ProjectArticle[]>([]);
-  const [redacaoLoa, setRedacaoLoa] = useState<any>(null);
 
   const legTemplates = templates.filter((t: DocTemplate) => t.branch === 'legislativo');
-
-  const totalPercentage = loaArtigos.reduce((acc, art) => acc + (art.percentage || 0), 0);
-  const redacaoTotalPercentage = redacaoLoa?.artigos?.reduce((acc:any, art:any) => acc + (art.percentage || 0), 0) || 0;
-
-  const toRoman = (num: number) => {
-    const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"];
-    return roman[num] || String(num);
-  };
+  const isPresCongresso = profile?.role === 'presidente_congresso' || profile?.role === 'admin';
+  const isDeputado = profile?.role === 'deputado' || isPresCongresso;
 
   const handleProtocol = () => {
-    let finalArtigos = artigosText.filter(a => (a.text || '').trim() !== '');
-    if (formData.category === 'loa' && finalArtigos.length === 0) {
-      const distText = loaArtigos.map((a, i) => `${toRoman(i+1)}. ${(a.pastaName === 'outro' ? (a.customName || 'RESERVA') : a.pastaName).toUpperCase()} - ${a.percentage}%`).join('\n');
-      finalArtigos = [{ id: 1, text: `Fica aprovado o Orçamento Anual com a seguinte distribuição:\n${distText}`, isVetoed: false }];
-    }
-    actions.protocolProject(formData, finalArtigos, formData.category === 'loa' ? loaArtigos : []);
-    setModalOpen(false); setFormData({ category: 'pl' }); setArtigosText([{ id: 1, text: '', isVetoed: false }]);
-    setLoaArtigos([{ pastaName: 'saude', percentage: 0 }]);
+    if (!formData.hiddenIntent.description) return showToast("A Intenção Oculta é obrigatória para a Moderação!");
+    const finalArtigos = artigosText.filter(a => (a.text || '').trim() !== '');
+    actions.protocolProject(formData, finalArtigos, []); // Simplificado sem LOA dinâmica nesta vista por agora
+    setModalOpen(false); 
+    setFormData({ category: 'pl', hiddenIntent: { targetMacro: 'economia', targetMicro: '', description: '' } }); 
+    setArtigosText([{ id: 1, text: '', isVetoed: false }]);
   };
 
-  const filteredProjects = projects.filter((p: RpgProject) => {
-    if (filterTab === 'tramitacao') return ['proposto', 'pauta', 'votacao', 'redacao_final', 'sancao', 'vetado', 'votacao_veto'].includes(p.status);
-    return ['sancionado', 'promulgado', 'arquivo'].includes(p.status);
-  });
+  // Filtragem de Projetos por Sub-Aba
+  const projsProtocolados = projects.filter((p: RpgProject) => p.status === 'protocolado');
+  const projsTramitacao = projects.filter((p: RpgProject) => p.status === 'pauta');
+  const projsHistorico = projects.filter((p: RpgProject) => ['sancionado', 'promulgado', 'arquivo', 'sancao'].includes(p.status));
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-         {['deputado', 'presidente_republica', 'governador', 'admin'].includes(profile?.role) && <button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-bold shadow-lg transition"><Plus className="w-4 h-4 inline mr-2"/> Redigir Documento</button>}
-         <div className="flex bg-gray-800 rounded p-1 border border-gray-700">
-           <button onClick={() => setFilterTab('tramitacao')} className={`px-4 py-1 rounded text-sm transition-colors ${filterTab==='tramitacao'?'bg-gray-700 text-white font-bold':'text-gray-400'}`}>Tramitação</button>
-           <button onClick={() => setFilterTab('historico')} className={`px-4 py-1 rounded text-sm transition-colors ${filterTab==='historico'?'bg-gray-700 text-white font-bold':'text-gray-400'}`}>Histórico</button>
-         </div>
+  // O Projeto que está a ser votado AGORA no Plenário
+  const currentVotingProject = liveSession?.currentProjectVotingId ? projects.find((p:RpgProject) => p.id === liveSession.currentProjectVotingId) : null;
+
+  const renderProjectCard = (p: RpgProject, listType: string) => (
+    <div key={p.id} className="bg-gray-800 p-5 border border-gray-700 rounded-lg shadow-md mb-4 flex flex-col md:flex-row gap-4">
+      <div className="flex-1">
+        <span className="text-xs font-bold text-gray-400 uppercase bg-gray-900 px-2 py-1 rounded border border-gray-700">{p.status.replace('_', ' ')}</span>
+        <h3 className="text-lg font-bold text-white mt-2 font-serif">{p.templateAbbreviation} N° {p.sequentialNumber}/{p.year} - {p.title}</h3>
+        <p className="text-xs text-gray-500 font-mono mb-3">Autoria: {p.authorName}</p>
+        
+        <div className="bg-gray-900/40 p-3 rounded border border-gray-700 text-sm text-gray-300 font-serif whitespace-pre-wrap">
+          {p.templateBodyText && <p className="mb-2 text-gray-500 font-bold">{p.templateBodyText}</p>}
+          {p.artigos?.map(art => <p key={art.id} className="mb-1"><strong>Art. {art.id}º</strong> - {art.text}</p>)}
+        </div>
+
+        {/* Emendas na Tramitação */}
+        {p.amendments?.length > 0 && (
+          <div className="mt-4 border-t border-gray-700 pt-3">
+            <p className="text-xs font-bold text-gray-500 uppercase mb-2">{listType === 'tramitacao' ? 'Emendas Propostas:' : 'Emendas Aprovadas/Em Votação:'}</p>
+            {p.amendments?.map(am => {
+              if (listType === 'historico' && am.status !== 'aprovada') return null;
+              return (
+                <p key={am.id} className="text-sm text-gray-400 bg-gray-900 p-2 rounded mb-1 border border-gray-800">
+                  {listType !== 'tramitacao' && <span className={am.status === 'aprovada' ? 'text-green-400 mr-2 font-bold' : 'text-yellow-400 mr-2 font-bold'}>[{am.status.toUpperCase()}]</span>}
+                  <strong>{am.authorName}:</strong> {am.text}
+                </p>
+              )
+            })}
+            
+            {listType === 'tramitacao' && isDeputado && (
+              <div className="flex gap-2 mt-3">
+                 <input value={emendaText} onChange={e => setEmendaText(e.target.value)} placeholder="Propor emenda..." className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none"/>
+                 <button onClick={() => { actions.proporEmenda(p.id, emendaText); setEmendaText(''); }} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm font-bold transition">Adicionar Emenda</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {filteredProjects.length === 0 && <div className="text-center py-10 text-gray-500 border-2 border-dashed border-gray-700 rounded-xl">Nenhum projeto encontrado.</div>}
+      <div className="flex flex-col gap-2 justify-center border-t md:border-t-0 md:border-l border-gray-700 pt-4 md:pt-0 pl-0 md:pl-4 min-w-[180px]">
+         {listType === 'protocolos' && isPresCongresso && <button onClick={() => actions.changeStatus(p.id, 'pauta')} className="bg-blue-600 hover:bg-blue-500 py-2 rounded text-sm text-white font-bold transition">Colocar em Pauta</button>}
+         {listType === 'protocolos' && profile?.id === p.authorId && <button onClick={() => actions.deleteDocument('projects', p.id)} className="bg-red-900/50 hover:bg-red-800 py-2 rounded text-sm text-red-200 transition">Retirar de Pauta</button>}
+      </div>
+    </div>
+  );
 
-      {filteredProjects.map((p: RpgProject) => {
-        const vSim = Object.values(p.votes || {}).filter(v => v === 'sim').length;
-        const vNao = Object.values(p.votes || {}).filter(v => v === 'nao').length;
-        const docYear = p.year || gameTime?.year || new Date().getFullYear();
+  return (
+    <div className="space-y-6">
+      {/* Navegação Interna */}
+      <div className="flex flex-wrap gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
+        <button onClick={() => setSubTab('protocolos')} className={`flex-1 py-2 rounded text-sm font-bold transition ${subTab === 'protocolos' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}>Protocolos ({projsProtocolados.length})</button>
+        <button onClick={() => setSubTab('tramitacao')} className={`flex-1 py-2 rounded text-sm font-bold transition ${subTab === 'tramitacao' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}>Em Tramitação ({projsTramitacao.length})</button>
+        <button onClick={() => setSubTab('sessao')} className={`flex-1 py-2 rounded text-sm font-bold transition flex justify-center items-center ${subTab === 'sessao' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+          <Gavel className="w-4 h-4 mr-2"/> Sessão Plenária {liveSession ? '🔴' : ''}
+        </button>
+        <button onClick={() => setSubTab('historico')} className={`flex-1 py-2 rounded text-sm font-bold transition ${subTab === 'historico' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}>Histórico</button>
+      </div>
 
-        return (
-          <div key={p.id} className="bg-gray-800 p-5 border border-gray-700 rounded-lg shadow-md mb-4">
-             <div className="flex flex-col md:flex-row gap-6">
-                <div className="flex-1">
-                   <div className="flex justify-between items-start">
-                      <span className="text-xs font-bold text-gray-400 uppercase bg-gray-900 px-2 py-1 rounded border border-gray-700">{p.status.replace('_', ' ')}</span>
-                      {['votacao', 'votacao_veto', 'redacao_final', 'sancao', 'sancionado', 'vetado', 'promulgado', 'arquivo'].includes(p.status) && (
-                        <div className="flex gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-gray-600">
-                          <span className="text-xs font-bold text-green-400">SIM: {vSim}</span>
-                          <span className="text-xs font-bold text-red-400">NÃO: {vNao}</span>
-                        </div>
-                      )}
-                   </div>
-                   
-                   <h3 className="text-xl font-bold text-white mt-3 mb-2 font-serif">
-                     {p.category === 'pec' ? <span className="text-yellow-500 mr-2">[PEC]</span> : ''}
-                     {p.templateAbbreviation} N° {p.sequentialNumber}/{docYear} - {p.title}
-                   </h3>
-                   <p className="text-xs text-gray-500 font-mono mb-4">Autoria: {p.authorName}</p>
-                   
-                   <div className="bg-gray-900/40 p-4 rounded mt-4 border border-gray-700 font-serif leading-relaxed whitespace-pre-wrap">
-                      
-                      {p.templateBodyText && (
-                        <p className="text-sm mb-4 font-bold text-gray-300">{p.templateBodyText}</p>
-                      )}
+      <div className="flex justify-end">
+         {isDeputado && <button onClick={() => setModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-bold shadow-lg transition flex items-center"><Plus className="w-4 h-4 mr-2"/> Redigir Documento</button>}
+      </div>
 
-                      {p.artigos?.map((art) => (
-                        <p key={art.id} className={`text-sm mb-2 ${art.isVetoed ? 'text-red-500 line-through opacity-50' : 'text-gray-200'}`}><strong>Art. {art.id}º</strong> - {art.text}</p>
-                      ))}
-                      
-                      {p.category === 'loa' && p.loaDetails && (
-                        <div className="mt-2 border-t border-gray-700 pt-2">
-                           <p className="text-xs font-bold text-gray-500 uppercase mb-1">Distribuição Oficial:</p>
-                           {p.loaDetails.artigos.map((a:any, i:number) => (
-                             <p key={i} className="text-sm text-green-400 font-bold">• {(a.pastaName === 'outro' ? (a.customName||'Reserva') : a.pastaName).toUpperCase()} - {a.percentage}%</p>
-                           ))}
-                        </div>
-                      )}
-                   </div>
-
-                   {/* PAINEL DE EMENDAS */}
-                   {['pauta', 'votacao', 'redacao_final', 'sancao', 'sancionado', 'promulgado', 'arquivo'].includes(p.status) && p.amendments && p.amendments.length > 0 && (
-                     <div className="mt-4 border-t border-gray-700 pt-4">
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Emendas:</p>
-                        {p.amendments.map(am => {
-                          const amSim = Object.values(am.votes || {}).filter(v => v === 'sim').length;
-                          const amNao = Object.values(am.votes || {}).filter(v => v === 'nao').length;
-                          return (
-                            <div key={am.id} className="bg-gray-900 p-3 rounded mb-2 flex flex-col text-sm border border-gray-800">
-                               <span className={am.status === 'proposta' ? 'text-yellow-400' : am.status === 'aprovada' ? 'text-green-400' : 'text-red-400'}>
-                                 [{am.status.toUpperCase()}] <strong className="text-gray-300">{am.authorName}</strong>: {am.text}
-                               </span>
-                               
-                               {/* Votação das Emendas separadamente */}
-                               {p.status === 'votacao' && (
-                                 <div className="flex justify-between items-center mt-3 border-t border-gray-800 pt-2">
-                                    <span className="text-xs text-gray-500">Placar da Emenda: <span className="text-green-400 font-bold">S:{amSim}</span> | <span className="text-red-400 font-bold">N:{amNao}</span></span>
-                                    {profile?.role === 'deputado' && (
-                                      <div className="flex gap-1">
-                                        <button onClick={() => actions.voteEmenda(p.id, am.id, 'sim')} className={`px-2 py-1 rounded text-xs border ${am.votes?.[profile.id] === 'sim' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400'}`}>Sim</button>
-                                        <button onClick={() => actions.voteEmenda(p.id, am.id, 'nao')} className={`px-2 py-1 rounded text-xs border ${am.votes?.[profile.id] === 'nao' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400'}`}>Não</button>
-                                      </div>
-                                    )}
-                                 </div>
-                               )}
-                            </div>
-                          )
-                        })}
-                     </div>
-                   )}
-                   
-                   {p.status === 'pauta' && ['deputado', 'presidente_republica'].includes(profile?.role) && (
-                     <div className="flex flex-col gap-2 mt-3 p-3 bg-gray-950 rounded border border-gray-800">
-                        <div className="flex gap-2">
-                           <input value={emendaText} onChange={e => setEmendaText(e.target.value)} placeholder="Propor alterar, adicionar ou suprimir artigo..." className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none"/>
-                           <button onClick={() => { actions.proporEmenda(p.id, emendaText); setEmendaText(''); }} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm font-bold transition">Protocolar Texto</button>
-                        </div>
-                        
-                        {p.category === 'loa' && (
-                          <div className="flex gap-2 items-center mt-2 border-t border-gray-800 pt-2 flex-wrap">
-                             <span className="text-xs text-gray-500 font-bold uppercase w-full">Propor Emenda de Orçamento:</span>
-                             <select value={emendaLoa.pastaName} onChange={e => setEmendaLoa({...emendaLoa, pastaName: e.target.value})} className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-xs text-white outline-none">
-                                {Object.keys(TAXONOMY).map(m => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
-                                <option value="outro">Outro/Reserva...</option>
-                             </select>
-                             {emendaLoa.pastaName === 'outro' && <input placeholder="Nome da Pasta" value={emendaLoa.customName} onChange={e=>setEmendaLoa({...emendaLoa, customName: e.target.value})} className="bg-gray-900 border border-gray-700 rounded flex-1 px-2 py-2 text-xs text-white outline-none"/>}
-                             <input type="number" placeholder="%" value={emendaLoa.percentage || ''} onChange={e => setEmendaLoa({...emendaLoa, percentage: Number(e.target.value)})} className="w-16 bg-gray-900 border border-gray-700 rounded px-2 py-2 text-xs text-white outline-none"/>
-                             <button onClick={() => {
-                               const pName = emendaLoa.pastaName === 'outro' ? (emendaLoa.customName || 'Nova Pasta') : emendaLoa.pastaName;
-                               const txt = `Altera a dotação orçamentária da pasta ${pName.toUpperCase()} para ${emendaLoa.percentage}%.`;
-                               actions.proporEmenda(p.id, txt, { pastaName: emendaLoa.pastaName, customName: emendaLoa.customName, newPercentage: emendaLoa.percentage });
-                               setEmendaLoa({ pastaName: 'saude', percentage: 0, customName: '' });
-                             }} className="bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded text-xs font-bold transition">Propor</button>
-                          </div>
-                        )}
-                     </div>
-                   )}
-                </div>
-
-                <div className="flex flex-col gap-2 min-w-[200px] border-t md:border-t-0 md:border-l border-gray-700 pt-4 md:pt-0 pl-0 md:pl-4 justify-center">
-                   {(profile?.role === 'presidente_congresso' || profile?.role === 'admin') && p.status === 'proposto' && <button onClick={() => actions.changeStatus(p.id, 'pauta')} className="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm text-white transition">Colocar em Pauta</button>}
-                   {(profile?.role === 'presidente_congresso' || profile?.role === 'admin') && p.status === 'pauta' && <button onClick={() => actions.changeStatus(p.id, 'votacao')} className="bg-indigo-600 hover:bg-indigo-500 py-2 rounded text-sm text-white shadow-lg transition">Abrir Votações (PL + Emendas)</button>}
-                   {(profile?.role === 'presidente_congresso' || profile?.role === 'admin') && p.status === 'votacao' && <button onClick={() => actions.encerrarVotacao(p.id, false)} className="bg-emerald-600 hover:bg-emerald-500 py-2 rounded text-sm text-white shadow-lg transition"><Gavel className="w-4 h-4 inline mr-2"/>Encerrar Votações</button>}
-                   {(profile?.role === 'presidente_congresso' || profile?.role === 'admin') && p.status === 'redacao_final' && <button onClick={() => { setModalRedacao(p); setRedacaoArtigos(p.artigos); setRedacaoLoa(p.loaDetails); }} className="bg-blue-600 hover:bg-blue-500 py-3 rounded text-sm text-white font-bold shadow-lg transition"><Edit className="w-4 h-4 inline mr-2"/>Redação Final</button>}
-                   {(profile?.role === 'presidente_congresso' || profile?.role === 'admin') && p.status === 'votacao_veto' && <button onClick={() => actions.encerrarVotacao(p.id, true)} className="bg-orange-600 hover:bg-orange-500 py-2 rounded text-sm text-white shadow-lg transition"><Gavel className="w-4 h-4 inline mr-2"/>Encerrar Votação (Veto)</button>}
-                   
-                   {profile?.role === 'deputado' && (p.status === 'votacao' || p.status === 'votacao_veto') && (
-                     <div className="flex flex-col gap-1 bg-gray-900 p-2 rounded border border-gray-700">
-                       <p className="text-xs text-center font-bold text-gray-400 uppercase mb-1">Voto no PL Principal</p>
-                       <div className="flex gap-1">
-                         <button onClick={() => actions.vote(p.id, 'sim')} className={`flex-1 py-2 rounded transition-colors ${p.votes?.[profile.id] === 'sim' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-green-900'}`}>S</button>
-                         <button onClick={() => actions.vote(p.id, 'nao')} className={`flex-1 py-2 rounded transition-colors ${p.votes?.[profile.id] === 'nao' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-red-900'}`}>N</button>
-                       </div>
-                     </div>
-                   )}
-                </div>
-             </div>
-          </div>
-        )
-      })}
-
-      {modalRedacao && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 p-6 rounded-xl w-full max-w-3xl border border-blue-600 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold text-blue-400 mb-2 border-b border-gray-700 pb-2">Mesa Diretora: Redação Final</h3>
-            <p className="text-sm text-gray-400 mb-4">Edite o texto do projeto para incorporar as emendas aprovadas antes de enviar para Sanção ou Promulgar.</p>
-            
-            <div className="mb-4 p-3 bg-gray-900 rounded border border-gray-700">
-               <p className="text-xs font-bold text-green-400 uppercase mb-2">Emendas Aprovadas para Incorporar:</p>
-               {modalRedacao.amendments?.filter(am => am.status === 'aprovada').map(am => (
-                 <p key={am.id} className="text-sm text-gray-300 italic border-l-2 border-green-500 pl-2 mb-1">{am.text}</p>
-               ))}
-               {(!modalRedacao.amendments || modalRedacao.amendments.filter(am => am.status === 'aprovada').length === 0) && <p className="text-sm text-gray-500">Nenhuma emenda aprovada.</p>}
-            </div>
-
-            <div className="space-y-3 mb-6">
-               <p className="text-sm font-bold text-white uppercase">Edição de Artigos:</p>
-               {redacaoArtigos.map((art, idx) => (
-                 <div key={art.id} className="flex gap-2 items-start">
-                   <span className="text-gray-500 font-bold mt-3">Art. {art.id}º</span>
-                   <textarea rows={3} value={art.text} onChange={e => { const n = [...redacaoArtigos]; n[idx].text = e.target.value; setRedacaoArtigos(n); }} className="flex-1 bg-gray-900 border border-gray-700 text-white p-3 rounded text-sm outline-none"/>
-                 </div>
-               ))}
-            </div>
-
-            {modalRedacao.category === 'loa' && redacaoLoa && (
-               <div className="bg-gray-900 p-4 rounded border border-gray-700 mb-6">
-                  <p className="text-sm font-bold text-green-400 mb-3">Ajustar Distribuição do Orçamento (LOA)</p>
-                  {redacaoLoa.artigos.map((art:any, idx:number) => (
-                    <div key={idx} className="flex w-full gap-2 items-center mb-2">
-                       <input value={art.pastaName} onChange={e => { const n={...redacaoLoa}; n.artigos[idx].pastaName=e.target.value; setRedacaoLoa(n); }} className="flex-1 bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm capitalize" />
-                       <input type="number" value={art.percentage} onChange={e => { const n={...redacaoLoa}; n.artigos[idx].percentage=Number(e.target.value); setRedacaoLoa(n); }} className="w-24 bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm"/>
-                       <button onClick={() => { const n={...redacaoLoa}; n.artigos = n.artigos.filter((_:any,i:number)=>i!==idx); setRedacaoLoa(n); }} className="text-red-500"><Trash2 size={16}/></button>
-                    </div>
-                  ))}
-                  <div className="flex justify-between mt-3 border-t border-gray-800 pt-2">
-                     <button onClick={() => { const n={...redacaoLoa}; n.artigos.push({pastaName:'Nova Pasta', percentage:0}); setRedacaoLoa(n); }} className="text-xs text-green-400">+ Adicionar Linha</button>
-                     <span className={`text-sm font-bold ${redacaoTotalPercentage === 100 ? 'text-green-500' : 'text-red-500'}`}>Total: {redacaoTotalPercentage}%</span>
-                  </div>
-               </div>
-            )}
-
-            <div className="flex gap-2">
-               <button onClick={() => setModalRedacao(null)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
-               {['pec', 'decreto_legislativo'].includes(modalRedacao.category) ? (
-                 <button onClick={() => { actions.promulgarProjeto(modalRedacao.id, redacaoArtigos, redacaoLoa); setModalRedacao(null); }} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded font-bold shadow-lg transition">Promulgar (Não vai ao Presidente)</button>
-               ) : (
-                 <button onClick={() => { actions.enviarParaSancao(modalRedacao.id, redacaoArtigos, redacaoLoa); setModalRedacao(null); }} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded font-bold shadow-lg transition">Salvar Redação e Enviar para Sanção</button>
-               )}
-            </div>
-          </div>
+      {/* ABA: Protocolos */}
+      {subTab === 'protocolos' && (
+        <div className="space-y-4">
+          <p className="text-gray-400 text-sm mb-4">Projetos aguardando despacho do Presidente do Congresso para entrarem em tramitação.</p>
+          {projsProtocolados.length === 0 && <div className="text-center py-10 text-gray-500 border-2 border-dashed border-gray-700 rounded-xl">Nenhum projeto protocolado.</div>}
+          {projsProtocolados.map((p: RpgProject) => renderProjectCard(p, 'protocolos'))}
         </div>
       )}
-      
-      {/* Modal Protocolar */}
+
+      {/* ABA: Tramitação */}
+      {subTab === 'tramitacao' && (
+        <div className="space-y-4">
+          <p className="text-gray-400 text-sm mb-4">Projetos em pauta. Deputados podem debater e propor emendas antes da sessão de votação.</p>
+          {projsTramitacao.length === 0 && <div className="text-center py-10 text-gray-500 border-2 border-dashed border-gray-700 rounded-xl">A pauta está limpa.</div>}
+          {projsTramitacao.map((p: RpgProject) => renderProjectCard(p, 'tramitacao'))}
+        </div>
+      )}
+
+      {/* ABA: Sessão Plenária (O Coração do Legislativo) */}
+      {subTab === 'sessao' && (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+          <div className="flex justify-between items-center border-b border-gray-700 pb-4 mb-6">
+            <h2 className="text-2xl font-bold text-white flex items-center"><Gavel className="w-6 h-6 mr-3 text-indigo-400"/> Plenário da Câmara</h2>
+            {!liveSession && isPresCongresso && <button onClick={actions.abrirSessao} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-bold shadow-lg transition">Abrir Sessão Legislativa</button>}
+          </div>
+
+          {!liveSession && <div className="text-center py-12 text-gray-500"><p className="text-lg">Não há nenhuma sessão em curso.</p><p className="text-sm">Aguarde a convocação pelo Presidente do Congresso.</p></div>}
+
+          {/* SESSÃO: Aberta para Presenças */}
+          {liveSession?.status === 'aberta_presenca' && (
+            <div className="text-center py-8">
+              <h3 className="text-xl font-bold text-yellow-400 mb-2 animate-pulse">Sessão Aberta - Chamada Nominal</h3>
+              <p className="text-gray-400 mb-6">Parlamentares, confirmem a vossa presença no plenário.</p>
+              
+              <div className="flex justify-center mb-8">
+                <div className="bg-gray-900 px-6 py-4 rounded-lg border border-gray-700 inline-block">
+                  <span className="text-3xl font-bold text-white flex items-center justify-center"><Users className="w-8 h-8 mr-3 text-indigo-400"/> {liveSession.presentDeputies.length}</span>
+                  <span className="text-xs text-gray-500 uppercase mt-1 block">Presentes</span>
+                </div>
+              </div>
+
+              <div className="flex gap-4 justify-center">
+                {isDeputado && !liveSession.presentDeputies.includes(profile.id) && (
+                  <button onClick={actions.marcarPresenca} className="bg-green-600 hover:bg-green-500 px-8 py-3 rounded text-white font-bold shadow-lg transition text-lg">Marcar Presença</button>
+                )}
+                {isPresCongresso && (
+                  <button onClick={actions.confirmarQuorum} className="bg-indigo-600 hover:bg-indigo-500 px-8 py-3 rounded text-white font-bold shadow-lg transition text-lg">Confirmar Quórum</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SESSÃO: Em Curso (Votações) */}
+          {liveSession?.status === 'em_curso' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center bg-indigo-900/20 p-4 rounded-lg border border-indigo-900/50">
+                <span className="text-indigo-300 font-bold flex items-center"><Users className="w-5 h-5 mr-2"/> Quórum: {liveSession.presentDeputies.length} Parlamentares</span>
+                {isPresCongresso && <button onClick={actions.encerrarSessao} className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded text-white text-sm font-bold transition">Encerrar Sessão (Gerar Ata)</button>}
+              </div>
+
+              {/* Se o Presidente ainda NÃO selecionou um projeto */}
+              {!currentVotingProject && (
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-4">Projetos na Ordem do Dia (Pauta)</h3>
+                  {projsTramitacao.length === 0 && <p className="text-gray-500 italic">Não há projetos em pauta para votar.</p>}
+                  <div className="grid gap-3">
+                    {projsTramitacao.map((p: RpgProject) => (
+                      <div key={p.id} className="bg-gray-900 p-4 rounded flex justify-between items-center border border-gray-700">
+                        <span className="text-white font-bold">{p.templateAbbreviation} {p.sequentialNumber}/{p.year} - {p.title}</span>
+                        {isPresCongresso && <button onClick={() => actions.iniciarVotacaoProjeto(p.id)} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-white text-sm font-bold transition">Iniciar Votação</button>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Se um Projeto ESTÁ A SER VOTADO AGORA */}
+              {currentVotingProject && (
+                <div className="bg-gray-900 border-2 border-indigo-500 rounded-xl p-6 shadow-2xl relative">
+                  <div className="absolute -top-3 right-6 bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase animate-pulse">Em Votação</div>
+                  
+                  <h3 className="text-2xl font-bold text-white font-serif mb-2">{currentVotingProject.title}</h3>
+                  <div className="bg-gray-950 p-4 rounded text-sm text-gray-300 font-serif mb-6 whitespace-pre-wrap border border-gray-800">
+                    {currentVotingProject.artigos?.map((art:any) => <p key={art.id} className="mb-1"><strong>Art. {art.id}º</strong> - {art.text}</p>)}
+                  </div>
+
+                  {/* Votação Principal */}
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 mb-6">
+                    <p className="text-sm font-bold text-gray-400 uppercase text-center mb-3">Votação do Texto Principal</p>
+                    <div className="flex gap-2 justify-center max-w-md mx-auto">
+                      <button onClick={() => actions.votarAoVivo(currentVotingProject.id, 'sim')} className={`flex-1 py-3 rounded font-bold transition ${currentVotingProject.votes?.[profile.id] === 'sim' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-green-900/50'}`}><CheckCircle className="w-5 h-5 mx-auto mb-1"/> SIM</button>
+                      <button onClick={() => actions.votarAoVivo(currentVotingProject.id, 'nao')} className={`flex-1 py-3 rounded font-bold transition ${currentVotingProject.votes?.[profile.id] === 'nao' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-red-900/50'}`}><XCircle className="w-5 h-5 mx-auto mb-1"/> NÃO</button>
+                    </div>
+                    {isPresCongresso && (
+                      <p className="text-center mt-3 text-xs text-gray-500">Parcial: {Object.values(currentVotingProject.votes||{}).filter(v=>v==='sim').length} Sim / {Object.values(currentVotingProject.votes||{}).filter(v=>v==='nao').length} Não</p>
+                    )}
+                  </div>
+
+                  {/* Votação das Emendas */}
+                  {currentVotingProject.amendments?.length > 0 && (
+                    <div className="space-y-3 mb-6">
+                      <p className="text-sm font-bold text-gray-400 uppercase">Votação das Emendas Destaque</p>
+                      {currentVotingProject.amendments.map((am:any) => (
+                        <div key={am.id} className="bg-gray-950 p-4 rounded border border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
+                          <p className="text-sm text-gray-300 flex-1"><strong className="text-indigo-400">Emenda ({am.authorName}):</strong> {am.text}</p>
+                          <div className="flex gap-1 min-w-[150px]">
+                            <button onClick={() => actions.votarAoVivo(currentVotingProject.id, 'sim', true, am.id)} className={`flex-1 py-2 rounded text-xs font-bold border ${am.votes?.[profile.id] === 'sim' ? 'bg-green-600 text-white border-green-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700'}`}>SIM</button>
+                            <button onClick={() => actions.votarAoVivo(currentVotingProject.id, 'nao', true, am.id)} className={`flex-1 py-2 rounded text-xs font-bold border ${am.votes?.[profile.id] === 'nao' ? 'bg-red-600 text-white border-red-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700'}`}>NÃO</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {isPresCongresso && (
+                    <div className="flex justify-center border-t border-gray-700 pt-6">
+                      <button onClick={() => actions.encerrarVotacaoProjetoAoVivo(currentVotingProject.id)} className="bg-yellow-600 hover:bg-yellow-500 text-white px-8 py-3 rounded-full font-bold shadow-[0_0_15px_rgba(202,138,4,0.5)] transition"><Gavel className="w-5 h-5 inline mr-2"/> Encerrar Votação Deste Projeto</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ABA: Histórico */}
+      {subTab === 'historico' && (
+        <div className="space-y-4">
+           <h3 className="text-lg font-bold text-white mb-4">Arquivo e Leis Finalizadas</h3>
+           {projsHistorico.map((p: RpgProject) => renderProjectCard(p, 'historico'))}
+        </div>
+      )}
+
+      {/* MODAL REDIGIR COM INTENÇÃO OCULTA */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 p-6 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-600 shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Redação Oficial</h3>
+            <h3 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Gabinete Parlamentar</h3>
+            
             <select onChange={e => {
                const tpl = templates.find((t: DocTemplate) => t.id === e.target.value);
-               if(tpl) { 
-                 setFormData({...formData, templateId: tpl.id, title: `${tpl.name}`, category: tpl.category}); 
-                 
-                 setArtigosText([{ id: 1, text: '', isVetoed: false }]); 
-               }
-            }} className="w-full bg-gray-900 border border-gray-700 p-3 text-white rounded mb-4 outline-none focus:border-indigo-500">
-              <option value="">Selecione o Modelo...</option>
+               if(tpl) { setFormData({...formData, templateId: tpl.id, title: `${tpl.name}`, category: tpl.category}); setArtigosText([{ id: 1, text: tpl.bodyText || '', isVetoed: false }]); }
+            }} className="w-full bg-gray-900 border border-gray-700 p-3 text-white rounded mb-4 outline-none">
+              <option value="">Selecione o Modelo do Projeto...</option>
               {legTemplates.map((t: DocTemplate) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
+
             {formData.templateId && (
               <>
-                <input placeholder="Ementa" onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-gray-900 border border-gray-700 p-3 text-white rounded mb-4 font-serif outline-none" />
-                <div className="bg-indigo-900/20 border border-indigo-900/50 p-4 rounded mb-4">
-                   <p className="text-sm font-bold text-indigo-300 mb-2">Justificativa & Intenção Estratégica</p>
-                   <textarea rows={2} placeholder="Descreva o objetivo prático..." onChange={e => setFormData({...formData, justificativa: e.target.value})} className="w-full bg-gray-900 border border-gray-700 p-3 text-white rounded text-sm mb-2 outline-none" />
-                   <select onChange={e => setFormData({...formData, intendedMacro: e.target.value})} className="w-full bg-gray-900 border border-gray-700 p-2 text-white rounded text-sm outline-none">
-                      <option value="">Em qual área espera impacto?</option>
-                      {Object.keys(TAXONOMY).map(m => <option key={m} value={m} className="capitalize">{m.replace('_', ' ')}</option>)}
-                   </select>
+                <input placeholder="Ementa / Título do Projeto" onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-gray-900 border border-gray-700 p-3 text-white rounded mb-4 font-serif outline-none" />
+                
+                {/* A INTENÇÃO OCULTA (Só o Mestre e o Autor veem) */}
+                <div className="bg-indigo-950/50 border border-indigo-900/80 p-4 rounded-lg mb-6 relative overflow-hidden">
+                   <div className="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
+                   <div className="flex items-center mb-2"><span className="text-sm font-bold text-indigo-300">Intenção Oculta (Mecânica de Jogo)</span><span className="ml-2 text-[10px] bg-indigo-900 text-indigo-200 px-2 py-0.5 rounded-full uppercase">Secreto</span></div>
+                   <p className="text-xs text-gray-400 mb-3">Preencha qual o dado que você quer alterar no jogo com esta lei. Isto será avaliado pelos moderadores.</p>
+                   
+                   <div className="flex gap-2 mb-2">
+                     <select onChange={e => setFormData({...formData, hiddenIntent: {...formData.hiddenIntent, targetMacro: e.target.value}})} className="flex-1 bg-gray-900 border border-gray-700 p-2 text-white rounded text-sm outline-none">
+                        {Object.keys(TAXONOMY).map(m => <option key={m} value={m} className="capitalize">{m.replace('_', ' ')}</option>)}
+                     </select>
+                     <select onChange={e => setFormData({...formData, hiddenIntent: {...formData.hiddenIntent, targetMicro: e.target.value}})} className="flex-1 bg-gray-900 border border-gray-700 p-2 text-white rounded text-sm outline-none">
+                        <option value="">-- Micro Dado --</option>
+                        {TAXONOMY[formData.hiddenIntent.targetMacro as MacroArea]?.map((micro: string) => <option key={micro} value={micro}>{micro}</option>)}
+                     </select>
+                   </div>
+                   <textarea rows={2} placeholder="Descreva à Moderação o efeito prático que você deseja. Ex: 'Quero que esta lei aumente +5 pontos em Policiamento nos estados'." onChange={e => setFormData({...formData, hiddenIntent: {...formData.hiddenIntent, description: e.target.value}})} className="w-full bg-gray-900 border border-gray-700 p-2 text-white rounded text-sm outline-none" />
                 </div>
+
                 <div className="space-y-3 mb-6">
+                   <p className="text-sm font-bold text-white uppercase border-b border-gray-700 pb-1">Texto da Lei</p>
                    {artigosText.map((art, idx) => (
                      <div key={art.id} className="flex gap-2 items-start">
                        <span className="text-gray-500 font-bold mt-3">Art. {art.id}º</span>
@@ -268,38 +269,12 @@ export function LegislativoView({ profile, projects, states, templates, actions,
                        {artigosText.length > 1 && <button onClick={() => setArtigosText(artigosText.filter(a => a.id !== art.id))} className="mt-3 text-red-500 hover:text-red-400"><Trash2 className="w-5 h-5"/></button>}
                      </div>
                    ))}
-                   <button onClick={() => setArtigosText([...artigosText, {id: artigosText.length + 1, text: '', isVetoed: false}])} className="text-xs bg-gray-800 border border-gray-700 px-3 py-2 rounded text-indigo-400 font-bold hover:bg-gray-700 transition">+ Adicionar Artigo (Texto)</button>
+                   <button onClick={() => setArtigosText([...artigosText, {id: artigosText.length + 1, text: '', isVetoed: false}])} className="text-xs bg-gray-800 border border-gray-700 px-3 py-2 rounded text-indigo-400 font-bold hover:bg-gray-700 transition">+ Adicionar Artigo</button>
                 </div>
-                
-                {formData.category === 'loa' && (
-                  <div className="bg-gray-900 p-4 rounded border border-gray-700 mb-4">
-                    <p className="text-sm font-bold text-green-400 mb-3">Distribuição do Orçamento</p>
-                    {loaArtigos.map((art: any, idx) => (
-                      <div key={idx} className="flex flex-col gap-2 mb-3 bg-gray-950 p-2 rounded border border-gray-800">
-                        <div className="flex w-full gap-2 items-center">
-                          <select value={art.pastaName} onChange={e => { const n = [...loaArtigos]; n[idx].pastaName = e.target.value; if(e.target.value !== 'outro') n[idx].customName = ''; setLoaArtigos(n); }} className="flex-1 bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm outline-none capitalize">
-                            {Object.keys(TAXONOMY).map(m => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
-                            <option value="outro">Outro (Novo Ministério/Reserva)...</option>
-                          </select>
-                          <div className="w-1/3 relative">
-                            <input type="number" placeholder="%" value={art.percentage || ''} onChange={e => { const n = [...loaArtigos]; n[idx].percentage = Number(e.target.value); setLoaArtigos(n); }} className="w-full bg-gray-800 border border-gray-700 text-white p-2 pr-6 rounded text-sm outline-none"/>
-                            <span className="absolute right-2 top-2 text-gray-400 text-sm">%</span>
-                          </div>
-                          {loaArtigos.length > 1 && <button onClick={() => setLoaArtigos(loaArtigos.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-400 ml-1"><Trash2 size={16}/></button>}
-                        </div>
-                        {art.pastaName === 'outro' && <input type="text" placeholder="Nome da nova pasta (ex: Ministério do Futuro)" value={art.customName || ''} onChange={e => { const n = [...loaArtigos]; n[idx].customName = e.target.value; setLoaArtigos(n); }} className="w-full bg-gray-800 border border-gray-700 text-white p-2 rounded text-sm outline-none"/>}
-                      </div>
-                    ))}
-                    <div className="flex justify-between items-center mt-3">
-                       <button onClick={() => setLoaArtigos([...loaArtigos, {pastaName:'saude', percentage:0}])} className="text-xs bg-gray-800 border border-gray-700 px-3 py-1 rounded text-green-400 font-bold hover:bg-gray-700 transition">+ Adicionar Destino</button>
-                       <span className={`text-sm font-bold ${totalPercentage === 100 ? 'text-green-500' : 'text-red-500'}`}>Alocado: {totalPercentage}% / 100%</span>
-                    </div>
-                  </div>
-                )}
                 
                 <div className="flex gap-2 mt-4">
                    <button onClick={() => setModalOpen(false)} className="flex-1 py-3 text-gray-400 hover:bg-gray-700 rounded transition">Cancelar</button>
-                   <button onClick={handleProtocol} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Protocolar</button>
+                   <button onClick={handleProtocol} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition">Protocolar Projeto</button>
                 </div>
               </>
             )}

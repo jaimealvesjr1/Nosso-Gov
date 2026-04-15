@@ -11,7 +11,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
   const [tplData, setTplData] = useState<any>({ branch: 'legislativo', isBudget: false, category: 'pl' });
 
   const [apuracaoModal, setApuracaoModal] = useState<any>(null);
-  const [effectForm, setEffectForm] = useState({ stateId: '', macro: 'saude', micro: '', pointsPerMonth: 0, remainingMonths: 1 });
+  const [effectForm, setEffectForm] = useState({ stateId: '', macro: 'saude', micro: '', pointsPerMonth: '' as any, remainingMonths: 1 });
 
   const [hardResetModal, setHardResetModal] = useState(false);
   const [resetData, setResetData] = useState({ countryName: 'República do Brasil', startMonth: 1, startYear: 2026 });
@@ -90,7 +90,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
       <div className="bg-gray-800 p-6 border border-gray-700 rounded-xl overflow-x-auto shadow-lg">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
            <h3 className="text-xl font-bold text-white">Controle de Jogadores Rápidos</h3>
-           <input type="text" placeholder="🔍 Buscar jogador..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded-full text-sm outline-none focus:border-indigo-500 w-full sm:w-64 shadow-inner"/>
+           <input type="text" placeholder="Ex: 5 (ou -3)" value={effectForm.pointsPerMonth} onChange={e => setEffectForm({...effectForm, pointsPerMonth: e.target.value})} className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded mt-1 font-mono outline-none"/>
         </div>
         <table className="w-full text-left text-sm whitespace-nowrap text-white">
           <thead className="bg-gray-900 text-gray-400">
@@ -172,7 +172,7 @@ export function AdminView({ usersList, states, templates, projects, decrees, gam
                <button onClick={() => { 
                  if(!effectForm.micro) return alert("Selecione um Micro Dado!");
                  actions.apurarDocumento(apuracaoModal.docType, apuracaoModal.id, {
-                   sourceDocTitle: apuracaoModal.title, stateId: effectForm.stateId, macro: effectForm.macro, micro: effectForm.micro, pointsPerMonth: effectForm.pointsPerMonth, remainingMonths: effectForm.remainingMonths
+                   sourceDocTitle: apuracaoModal.title, stateId: effectForm.stateId, macro: effectForm.macro, micro: effectForm.micro, pointsPerMonth: Number(effectForm.pointsPerMonth), remainingMonths: Number(effectForm.remainingMonths)
                  }); 
                  setApuracaoModal(null); 
                }} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded font-bold shadow-lg transition"><Zap className="w-4 h-4 inline mr-2"/>Decretar Efeito</button>
