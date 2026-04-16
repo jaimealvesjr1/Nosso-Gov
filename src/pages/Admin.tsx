@@ -203,8 +203,22 @@ export function AdminView({ profile, usersList, states, templates, projects, dec
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-900 p-8 rounded-xl w-full max-w-md border-2 border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.3)]">
             <h3 className="text-2xl font-bold mb-4 text-red-500 border-b border-red-900/50 pb-2">⚠️ ATENÇÃO: EXCLUSÃO TOTAL</h3>
-            <p className="text-gray-400 text-sm mb-6 leading-relaxed">Esta ação irá apagar **todos** os documentos, mandatos, estados e reiniciar o tempo do RPG. É o fim de uma era.</p>
-            <input type="text" value={resetData.countryName} onChange={e => setResetData({...resetData, countryName: e.target.value})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mb-4 outline-none" placeholder="Nome do Novo País" />
+            <p className="text-gray-400 text-sm mb-6 leading-relaxed">Esta ação irá apagar TODOS os documentos, mandatos, estados e reiniciar o tempo do RPG. É o fim de uma era.</p>
+            
+            <label className="text-xs text-gray-400 uppercase font-bold">Nome do Novo País/União</label>
+            <input type="text" value={resetData.countryName} onChange={e => setResetData({...resetData, countryName: e.target.value})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 mb-4 outline-none" placeholder="Ex: República Nova" />
+            
+            <div className="flex gap-4 mb-6">
+              <div className="flex-1">
+                <label className="text-xs text-gray-400 uppercase font-bold">Mês Inicial</label>
+                <input type="number" min="1" max="12" value={resetData.startMonth} onChange={e => setResetData({...resetData, startMonth: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 outline-none" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-400 uppercase font-bold">Ano Inicial</label>
+                <input type="number" value={resetData.startYear} onChange={e => setResetData({...resetData, startYear: Number(e.target.value)})} className="w-full bg-gray-800 border border-gray-700 text-white p-3 rounded mt-1 outline-none" />
+              </div>
+            </div>
+
             <div className="flex gap-2">
                <button onClick={() => setHardResetModal(false)} className="flex-1 py-3 text-gray-400 font-bold">Abortar</button>
                <button onClick={() => { actions.hardReset(resetData); setHardResetModal(false); }} className="flex-1 bg-red-600 text-white py-3 rounded font-bold shadow-lg transition hover:bg-red-500">Destruir e Recriar</button>

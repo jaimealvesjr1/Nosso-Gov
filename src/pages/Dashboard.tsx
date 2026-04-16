@@ -2,6 +2,18 @@ import React from 'react';
 import { RpgData, UserProfile, TAXONOMY, MacroArea } from '../types';
 import { DataBar, formatMoney } from '../components/UI';
 
+// NOVO: Mini Gráfico de Histórico
+const Sparkline = ({ data }: { data: number[] }) => {
+  if (!data || data.length < 2) return <div className="h-6 w-16 bg-gray-800 rounded border border-gray-700 flex items-center justify-center text-[8px] text-gray-500">Sem dados</div>;
+  const max = 100, min = 0, width = 60, height = 24;
+  const points = data.map((d, i) => `${(i / (data.length - 1)) * width},${height - ((d - min) / (max - min)) * height}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-16 h-6 overflow-visible opacity-70">
+      <polyline fill="none" stroke="#818cf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={points} />
+    </svg>
+  );
+};
+
 export function DashboardView({ states, usersList, activeEffects }: any) {
   return (
     <div className="space-y-8">
@@ -10,8 +22,6 @@ export function DashboardView({ states, usersList, activeEffects }: any) {
       
       {states.map((state: RpgData) => {
         const pastasExibidas = Array.from(new Set([...Object.keys(TAXONOMY), ...Object.keys(state.allocatedBudget || {})]));
-        
-        // Pega todos os efeitos que estão a acontecer neste estado
         const stateEffects = activeEffects?.filter((e: any) => e.stateId === state.id || (state.type === 'federal' && e.stateId === 'federal')) || [];
         
         return (
@@ -39,16 +49,17 @@ export function DashboardView({ states, usersList, activeEffects }: any) {
                       {isFixa ? (
                         TAXONOMY[pastaName as MacroArea].map(micro => {
                           const val = state.indicators?.[pastaName]?.[micro] || 50;
-                          
-                          // NOVO: Filtra os efeitos específicos APENAS para este Microdado!
                           const microEffects = stateEffects.filter((e: any) => e.macro === pastaName && e.micro === micro);
 
                           return (
                             <div key={micro} className="relative">
-                              {/* Barra Normal do Microdado */}
-                              <DataBar label={micro} value={val} color={val > 70 ? 'bg-green-500' : val < 40 ? 'bg-red-500' : 'bg-yellow-500'} />
+                              <div className="flex items-end gap-3 mb-1">
+                                 <div className="flex-1">
+                                    <DataBar label={micro} value={val} color={val > 70 ? 'bg-green-500' : val < 40 ? 'bg-red-500' : 'bg-yellow-500'} />
+                                 </div>
+                                 <Sparkline data={state.history?.map((h:any) => h.indicators?.[pastaName]?.[micro] || 50) || []} />
+                              </div>
                               
-                              {/* O Modificador visual embutido logo abaixo da barra! */}
                               {microEffects.length > 0 && (
                                 <div className="mt-1 ml-2 pl-2 border-l-2 border-indigo-500/50 flex flex-col gap-1">
                                   {microEffects.map((eff: any) => (

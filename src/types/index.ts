@@ -44,6 +44,7 @@ export interface DocTemplate {
   id: string; branch: 'legislativo' | 'executivo' | 'judiciario'; 
   category: 'loa' | 'pec' | 'pl' | 'decreto_legislativo' | 'decreto' | 'portaria' | 'sentenca'; 
   name: string; abbreviation: string; isBudget: boolean; bodyText: string; 
+  isArchived?: boolean;
 }
 
 export interface LoaArticle { pastaName: string; percentage: number; customName?: string; }

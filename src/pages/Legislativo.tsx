@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Gavel, Trash2, Users, CheckCircle, XCircle } from 'lucide-react';
 import { RpgProject, DocTemplate, ProjectArticle, TAXONOMY, MacroArea } from '../types';
 
-export function LegislativoView({ profile, projects, liveSession, templates, gameTime, showToast, actions }: any) {
+export function LegislativoView({ profile, projects, liveSession, templates, gameTime, showToast, actions, usersList }: any) {
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState<any>({ category: 'pl', hiddenIntent: { targetMacro: 'economia', targetMicro: '', description: '' } });
   const [artigosText, setArtigosText] = useState<ProjectArticle[]>([{ id: 1, text: '', isVetoed: false }]);
@@ -186,6 +186,25 @@ export function LegislativoView({ profile, projects, liveSession, templates, gam
                     {isPresCongresso && (
                       <p className="text-center mt-3 text-xs text-gray-500">Parcial: {Object.values(currentVotingProject.votes||{}).filter(v=>v==='sim').length} Sim / {Object.values(currentVotingProject.votes||{}).filter(v=>v==='nao').length} Não</p>
                     )}
+                  </div>
+
+                  {/* NOVO: Painel de Votos em Tempo Real */}
+                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700 mb-6">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-3">Painel do Plenário (Ao Vivo)</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {usersList?.filter((u:any) => u.role === 'deputado' || u.role === 'presidente_congresso').map((dep:any) => {
+                         const isInSession = liveSession.presentDeputies.includes(dep.id);
+                         const vote = currentVotingProject.votes?.[dep.id];
+                         return (
+                           <div key={dep.id} className={`p-2 rounded text-xs border ${!isInSession ? 'bg-gray-900/50 border-gray-800 text-gray-600' : 'bg-gray-800 border-gray-600 text-white'}`}>
+                             <span className="font-bold">{dep.discordUsername}</span>
+                             <span className="block mt-1">
+                               {!isInSession ? 'Ausente' : vote === 'sim' ? '✅ SIM' : vote === 'nao' ? '❌ NÃO' : '⏳ Aguardando'}
+                             </span>
+                           </div>
+                         );
+                      })}
+                    </div>
                   </div>
 
                   {/* Votação das Emendas */}

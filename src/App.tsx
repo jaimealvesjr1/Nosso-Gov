@@ -92,44 +92,29 @@ export default function App() {
   // O GRANDE MOTOR DE AÇÕES DO RPG
   // ==========================================
   const gameActions = {
-    
-    // --- LEGISLATIVO (PROTOCOLOS E EMENDAS) ---
     protocolProject: async (formData: any, artigos: ProjectArticle[], loaArtigos: LoaArticle[]) => {
       if(!profile) return;
       const nextNum = projects.length > 0 ? Math.max(...projects.map(p => p.sequentialNumber)) + 1 : 1;
       const template = templates.find(t => t.id === formData.templateId);
-      const cat = template?.category || 'pl';
-
+      
       const newProject: any = {
-        sequentialNumber: nextNum, title: formData.title, category: cat,
+        sequentialNumber: nextNum, title: formData.title, category: template?.category || 'pl',
         templateName: template?.name || 'Projeto', templateAbbreviation: template?.abbreviation || 'PROJ',
         templateBodyText: template?.bodyText || '',
         artigos: artigos.filter(a => (a.text || '').trim() !== ''),
-        justificativa: formData.justificativa || '', 
-        intendedMacro: formData.intendedMacro || '', 
-        hiddenIntent: formData.hiddenIntent || null,
-        apurado: false,
+        justificativa: formData.justificativa || '', intendedMacro: formData.intendedMacro || '', 
+        hiddenIntent: formData.hiddenIntent || null, apurado: false,
         authorId: profile.id, authorName: profile.discordUsername, 
-        status: 'protocolado',
-        votes: {}, createdAt: serverTimestamp(),
+        status: 'protocolado', votes: {}, createdAt: serverTimestamp(),
         amendments: [], year: gameTime.year
       };
 
-      if (cat === 'loa') {
-        newProject.loaDetails = { 
-          stateId: profile.jurisdictionId || 'federal', 
-          artigos: loaArtigos.map((a: any) => ({ pastaName: a.pastaName === 'outro' ? (a.customName || 'Reserva') : a.pastaName, percentage: a.percentage }))
-        };
-      }
       await setDoc(doc(db, 'artifacts', APP_ID, 'projects', generateId()), newProject);
-      showToast("Projeto Protocolado com Sucesso!");
+      showToast("Projeto Protocolado!");
     },
-
     changeStatus: async (projectId: string, newStatus: string) => {
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus });
-      showToast("Status Atualizado.");
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: newStatus }); showToast("Status Atualizado.");
     },
-
     proporEmenda: async (projectId: string, text: string) => {
       if(!profile) return;
       const p = projects.find(x => x.id === projectId);
@@ -138,286 +123,161 @@ export default function App() {
       await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: [...(p.amendments || []), newAmendment] });
       showToast("Emenda Protocolada!");
     },
-
-    // --- LEGISLATIVO (SESSÃO AO VIVO) ---
     abrirSessao: async () => {
-      if (profile?.role !== 'presidente_congresso' && profile?.role !== 'admin') return;
-      await setDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), {
-        id: generateId(), status: 'aberta_presenca', presentDeputies: [], currentProjectVotingId: null, ata: [], createdAt: serverTimestamp()
-      });
-      showToast("Sessão Legislativa Aberta! Aguardando Quórum.");
+      await setDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { id: generateId(), status: 'aberta_presenca', presentDeputies: [], currentProjectVotingId: null, ata: [], createdAt: serverTimestamp() });
+      showToast("Sessão Aberta!");
     },
-
     marcarPresenca: async () => {
       if (!profile || !liveSession) return;
-      if (liveSession.presentDeputies.includes(profile.id)) return;
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { presentDeputies: [...liveSession.presentDeputies, profile.id] });
-      showToast("Presença Confirmada.");
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { presentDeputies: [...liveSession.presentDeputies, profile.id] }); showToast("Presença Confirmada.");
     },
-
     confirmarQuorum: async () => {
-      if (!liveSession || (profile?.role !== 'presidente_congresso' && profile?.role !== 'admin')) return;
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { status: 'em_curso' });
-      showToast("Quórum Confirmado! Sessão em curso.");
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { status: 'em_curso' }); showToast("Quórum Confirmado!");
     },
-
     iniciarVotacaoProjeto: async (projectId: string) => {
-      if (!liveSession) return;
       await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: 'em_votacao', votes: {} });
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { currentProjectVotingId: projectId });
-      showToast("Votação Aberta no Plenário!");
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { currentProjectVotingId: projectId }); showToast("Votação Aberta!");
     },
-
     votarAoVivo: async (projectId: string, vote: string, isAmendment: boolean = false, amendmentId?: string) => {
       if (!profile) return;
       const p = projects.find(x => x.id === projectId);
       if (!p) return;
-
       if (isAmendment && amendmentId) {
-        const updatedAmendments = (p.amendments || []).map((am: any) => {
-          if (am.id === amendmentId) return { ...am, votes: { ...am.votes, [profile.id]: vote } };
-          return am;
-        });
+        const updatedAmendments = (p.amendments || []).map((am: any) => am.id === amendmentId ? { ...am, votes: { ...am.votes, [profile.id]: vote } } : am);
         await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { amendments: updatedAmendments });
       } else {
         await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { votes: { ...p.votes, [profile.id]: vote } });
       }
     },
-
     encerrarVotacaoProjetoAoVivo: async (projectId: string) => {
       const p = projects.find(x => x.id === projectId);
       if (!p || !liveSession) return;
-
       const sim = Object.values(p.votes || {}).filter(v => v === 'sim').length;
       const nao = Object.values(p.votes || {}).filter(v => v === 'nao').length;
-      
       const updatedAmendments = (p.amendments || []).map((am: any) => {
         const amSim = Object.values(am.votes || {}).filter(v => v === 'sim').length;
         const amNao = Object.values(am.votes || {}).filter(v => v === 'nao').length;
         return { ...am, status: amSim > amNao ? 'aprovada' : 'rejeitada' };
       });
-
-      let aprovado = false;
-      if (p.category === 'pec') {
-        const requiredVotes = Math.max(1, Math.ceil(liveSession.presentDeputies.length * 0.6));
-        aprovado = sim >= requiredVotes;
-      } else {
-        aprovado = sim > nao;
-      }
-
-      const novoStatus = aprovado ? 'sancao' : 'arquivo';
-      const novaAtaEntry = { projectId: p.id, title: p.title, result: aprovado ? 'aprovado' : 'rejeitado' };
-
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: novoStatus, amendments: updatedAmendments });
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { currentProjectVotingId: null, ata: [...(liveSession.ata || []), novaAtaEntry] });
+      const aprovado = p.category === 'pec' ? sim >= Math.max(1, Math.ceil(liveSession.presentDeputies.length * 0.6)) : sim > nao;
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: aprovado ? 'sancao' : 'arquivo', amendments: updatedAmendments });
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'), { currentProjectVotingId: null, ata: [...(liveSession.ata || []), { projectId: p.id, title: p.title, result: aprovado ? 'aprovado' : 'rejeitado' }] });
       showToast(aprovado ? "Aprovado! Enviado à Sanção." : "Rejeitado e Arquivado.");
     },
-
     encerrarSessao: async () => {
       if (!liveSession) return;
       await setDoc(doc(db, 'artifacts', APP_ID, 'historico_sessoes', generateId()), { ...liveSession, status: 'encerrada', closedAt: serverTimestamp(), year: gameTime.year });
-      await deleteDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'));
-      showToast("Sessão Encerrada com Sucesso.");
+      await deleteDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session')); showToast("Sessão Encerrada.");
     },
-
-    // --- ADMIN E SISTEMA DE DELEÇÃO/TESOURO ---
     deleteDocument: async (collectionName: string, id: string) => {
-      if (profile?.role !== 'admin' && profile?.role !== 'moderador') return;
-      await deleteDoc(doc(db, 'artifacts', APP_ID, collectionName, id));
-      showToast("Documento excluído pela Moderação.");
+      await deleteDoc(doc(db, 'artifacts', APP_ID, collectionName, id)); showToast("Excluído pela Moderação.");
     },
-
     adjustBudget: async (stateId: string, pastaName: string, amount: number, isSubtrair: boolean) => {
-      if (profile?.role !== 'admin' && profile?.role !== 'moderador') return;
-      if (!amount || amount <= 0) return showToast("Valor inválido.");
       const state = states.find(s => s.id === stateId);
       if (!state) return;
-
       if (pastaName === 'caixa_geral') {
         const current = state.macro.caixa || 0;
-        const finalAmount = isSubtrair ? current - amount : current + amount;
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'states', stateId), { 'macro.caixa': Math.max(0, finalAmount) });
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'states', stateId), { 'macro.caixa': Math.max(0, isSubtrair ? current - amount : current + amount) });
       } else {
         const current = state.allocatedBudget?.[pastaName] || 0;
-        const finalAmount = isSubtrair ? current - amount : current + amount;
-        const newBudget = { ...state.allocatedBudget, [pastaName]: Math.max(0, finalAmount) };
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'states', stateId), { allocatedBudget: newBudget });
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'states', stateId), { allocatedBudget: { ...state.allocatedBudget, [pastaName]: Math.max(0, isSubtrair ? current - amount : current + amount) } });
       }
-      showToast(`R$ ${amount.toLocaleString('pt-BR')} ${isSubtrair ? 'cobrados' : 'injetados'} com sucesso!`);
+      showToast("Dinheiro alterado!");
     },
-
-    // --- NOVO HARD RESET (Limpa TODAS as coleções e sessões) ---
     hardReset: async (data: { countryName: string, startMonth: number, startYear: number }) => {
-      if (profile?.role !== 'admin' && profile?.role !== 'moderador') return;
-      
       const collectionsToClear = ['projects', 'decrees', 'judiciary', 'effects', 'states', 'posses', 'historico_sessoes'];
-      
       for (const colName of collectionsToClear) {
         const snap = await getDocs(collection(db, 'artifacts', APP_ID, colName));
         snap.forEach(d => deleteDoc(doc(db, 'artifacts', APP_ID, colName, d.id)));
       }
-
       await deleteDoc(doc(db, 'artifacts', APP_ID, 'system', 'live_session'));
-
       const initialIndicators: any = {};
-      Object.entries(TAXONOMY).forEach(([macro, micros]) => { 
-        initialIndicators[macro] = {}; 
-        micros.forEach(m => initialIndicators[macro][m] = 50); 
-      });
-      
-      await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), {
-        name: data.countryName, type: 'federal', 
-        macro: { populacao: 0, pib: 0, aprovacao: 50, caixa: 100000000 },
-        indicators: initialIndicators, allocatedBudget: {}, history: []
-      });
-
-      for (const u of usersList) {
-        if (u.role !== 'admin' && u.role !== 'moderador') {
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'users', u.id), { role: 'espectador', jurisdictionId: 'federal', pastaId: null });
-        }
-      }
-
+      Object.entries(TAXONOMY).forEach(([macro, micros]) => { initialIndicators[macro] = {}; micros.forEach(m => initialIndicators[macro][m] = 50); });
+      await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), { name: data.countryName, type: 'federal', macro: { populacao: 0, pib: 0, aprovacao: 50, caixa: 100000000 }, indicators: initialIndicators, allocatedBudget: {}, history: [] });
+      for (const u of usersList) { if (u.role !== 'admin') await updateDoc(doc(db, 'artifacts', APP_ID, 'users', u.id), { role: 'espectador', jurisdictionId: 'federal', pastaId: null }); }
       await setDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), { month: Number(data.startMonth), year: Number(data.startYear) });
-      showToast("HARD RESET CONCLUÍDO COM SUCESSO!");
+      showToast("HARD RESET CONCLUÍDO!");
     },
-
     advanceTime: async () => {
       let nextMonth = gameTime.month + 1;
       let nextYear = gameTime.year;
-      if (nextMonth > 12) {
-        nextMonth = 1;
-        nextYear++;
-      }
+      if (nextMonth > 12) { nextMonth = 1; nextYear++; }
 
       const updatedStates = JSON.parse(JSON.stringify(states));
       for (const effect of activeEffects) {
-        const targetState = updatedStates.find((s: any) => s.id === effect.stateId);
-        
-        if (targetState) {
+        const targetState = updatedStates.find((s:any) => s.id === effect.stateId);
+        if (targetState && targetState.indicators && targetState.indicators[effect.macro]) {
           const currentVal = targetState.indicators[effect.macro][effect.micro] || 50;
-          const newVal = Math.max(0, Math.min(100, currentVal + effect.pointsPerMonth));
-          targetState.indicators[effect.macro][effect.micro] = newVal;
+          targetState.indicators[effect.macro][effect.micro] = Math.max(0, Math.min(100, currentVal + effect.pointsPerMonth));
+        }
+        const newRemaining = effect.remainingMonths - 1;
+        if (newRemaining <= 0) await deleteDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id));
+        else await updateDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id), { remainingMonths: newRemaining });
+      }
+      
+      for (const s of updatedStates) { 
+        if (s.indicators) {
+          const valoresEco = Object.values(s.indicators.economia || {}) as number[];
+          const mediaEco = valoresEco.length > 0 ? valoresEco.reduce((a,b)=>a+b,0) / valoresEco.length : 50;
+          s.macro.pib = Math.max(0, s.macro.pib + (s.macro.pib * ((mediaEco - 50) / 1000)));
+          
+          const valoresSaude = Object.values(s.indicators.saude || {}) as number[];
+          const mediaSaude = valoresSaude.length > 0 ? valoresSaude.reduce((a,b)=>a+b,0) / valoresSaude.length : 50;
+          s.macro.populacao = Math.max(0, Math.floor(s.macro.populacao + (s.macro.populacao * ((mediaSaude > 40) ? 0.001 : -0.0005))));
 
-          const newRemaining = effect.remainingMonths - 1;
-          if (newRemaining <= 0) {
-            await deleteDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id));
-          } else {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'effects', effect.id), { 
-              remainingMonths: newRemaining 
-            });
-          }
+          const snapshot = { month: gameTime.month, year: gameTime.year, indicators: JSON.parse(JSON.stringify(s.indicators)) };
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'states', s.id), { macro: s.macro, indicators: s.indicators, history: [...(s.history || []), snapshot] }); 
         }
       }
-
-      for (const s of updatedStates) {
-        const snapshot = {
-          month: gameTime.month,
-          year: gameTime.year,
-          indicators: JSON.parse(JSON.stringify(s.indicators))
-        };
-
-        const newHistory = [...(s.history || []), snapshot];
-
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'states', s.id), {
-          indicators: s.indicators,
-          history: newHistory
-        });
-      }
-
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), {
-        month: nextMonth,
-        year: nextYear
-      });
-
-      showToast(`Mês encerrado! Bem-vindo a ${nextMonth}/${nextYear}.`);
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'system', 'time'), { month: nextMonth, year: nextYear });
+      showToast(`Tempo avançado!`);
     },
-
-    // --- FUNÇÕES DO EXECUTIVO E JUDICIÁRIO RESTAURADAS ---
     publishDecreto: async (data: any, actionsList: DecreeAction[]) => {
-      if (!profile) return;
-      const targetStateId = data.stateId || profile.jurisdictionId || 'federal';
-      for (const act of actionsList) {
-        if (act.type === 'nomeacao') await updateDoc(doc(db, 'artifacts', APP_ID, 'users', act.userId), { role: 'ministro', jurisdictionId: targetStateId, pastaId: act.pastaName });
-        else if (act.type === 'exoneracao') await updateDoc(doc(db, 'artifacts', APP_ID, 'users', act.userId), { role: 'espectador', pastaId: null });
-      }
-      const nextNum = decrees.length > 0 ? Math.max(...decrees.map(d => d.sequentialNumber)) + 1 : 1;
+      const nextNum = decrees.length > 0 ? Math.max(...decrees.map((d:any) => d.sequentialNumber)) + 1 : 1;
       await setDoc(doc(db, 'artifacts', APP_ID, 'decrees', generateId()), {
         sequentialNumber: nextNum, title: data.title || "Documento Executivo", content: data.content || "",
         category: data.category || 'decreto', actions: actionsList || [], justificativa: data.justificativa || '', intendedMacro: data.intendedMacro || '',
-        hiddenIntent: data.hiddenIntent || null,
-        apurado: false, authorName: profile.discordUsername, jurisdictionId: targetStateId, year: gameTime.year, createdAt: serverTimestamp()
+        hiddenIntent: data.hiddenIntent || null, apurado: false, authorName: profile?.discordUsername, jurisdictionId: data.stateId || 'federal', year: gameTime.year, createdAt: serverTimestamp()
       });
       showToast(`Documento publicado!`);
     },
-
-    analisarSancao: async (projectId: string, artigosVetadosIds: number[]) => {
+    analisarSancao: async (projectId: string, alteracoes: Record<number, { isVetoed: boolean, newText: string }>) => {
       const p = projects.find(x => x.id === projectId);
       if (!p) return;
-      const hasAnyVeto = artigosVetadosIds.length > 0;
-      const novosArtigos = p.artigos.map((art:any) => ({ ...art, isVetoed: artigosVetadosIds.includes(art.id) }));
-      let finalStatus = hasAnyVeto ? 'vetado' : 'sancionado';
-
-      if (finalStatus === 'sancionado' && p.category === 'loa' && p.loaDetails) {
-        const targetState = states.find(s => s.id === p.loaDetails!.stateId);
-        if (targetState) {
-          const updatedBudget = { ...(targetState.allocatedBudget || {}) };
-          p.loaDetails.artigos.forEach((art:any) => {
-            const amount = (targetState.macro.caixa * art.percentage) / 100;
-            updatedBudget[art.pastaName] = (updatedBudget[art.pastaName] || 0) + amount;
-          });
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'states', targetState.id), { allocatedBudget: updatedBudget });
-        }
-      }
-      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: finalStatus, artigos: novosArtigos });
-      showToast(hasAnyVeto ? "Veto aplicado!" : "Sancionado!");
-    },
-
-    emitirSentenca: async (data: {title: string, content: string}) => {
-      if(!profile) return;
-      const nextNum = decisions.length > 0 ? Math.max(...decisions.map((d:any) => d.sequentialNumber || 0)) + 1 : 1;
-      await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { 
-        sequentialNumber: nextNum, year: gameTime.year,
-        authorName: profile.discordUsername, title: `${data.title} Nº ${nextNum}/${gameTime.year}`, 
-        content: data.content, createdAt: serverTimestamp() 
+      let hasAnyVeto = false;
+      const novosArtigos = p.artigos.map((art:any) => {
+        const alt = alteracoes[art.id];
+        if (!alt) return art;
+        if (alt.isVetoed) { hasAnyVeto = true; return { ...art, isVetoed: true }; }
+        if (alt.newText && alt.newText !== art.text) return { ...art, text: alt.newText, modificado: true };
+        return art;
       });
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'projects', projectId), { status: hasAnyVeto ? 'vetado' : 'sancionado', artigos: novosArtigos });
+      showToast(hasAnyVeto ? "Veto aplicado!" : "Sancionado com Nova Redação!");
+    },
+    emitirSentenca: async (data: {title: string, content: string}) => {
+      const nextNum = decisions.length > 0 ? Math.max(...decisions.map((d:any) => d.sequentialNumber || 0)) + 1 : 1;
+      await setDoc(doc(db, 'artifacts', APP_ID, 'judiciary', generateId()), { sequentialNumber: nextNum, year: gameTime.year, authorName: profile?.discordUsername, title: `${data.title} Nº ${nextNum}/${gameTime.year}`, content: data.content, createdAt: serverTimestamp() });
       showToast("Sentença Publicada!");
     },
-
     diplomar: async (data: { startMonth: number, startYear: number, endMonth: number, endYear: number, eleitos: any[] }) => {
-      if(!data.eleitos || data.eleitos.length === 0) return showToast("Lista vazia!");
-      const nextNum = posses.length > 0 ? Math.max(...posses.map((p:any) => p.sequentialNumber || 0)) + 1 : 1;
-      
-      for (const item of data.eleitos) {
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'users', item.userId), { role: item.role, jurisdictionId: item.jurisdictionId, pastaId: null });
-      }
-
-      await setDoc(doc(db, 'artifacts', APP_ID, 'posses', generateId()), { 
-        sequentialNumber: nextNum, year: gameTime.year,
-        startMonth: data.startMonth, startYear: data.startYear,
-        endMonth: data.endMonth, endYear: data.endYear,
-        eleitos: data.eleitos,
-        createdAt: serverTimestamp() 
-      });
-      showToast("Posse Registrada e Jogadores Atualizados!");
+      for (const item of data.eleitos) await updateDoc(doc(db, 'artifacts', APP_ID, 'users', item.userId), { role: item.role, jurisdictionId: item.jurisdictionId, pastaId: null });
+      await setDoc(doc(db, 'artifacts', APP_ID, 'posses', generateId()), { sequentialNumber: posses.length > 0 ? Math.max(...posses.map((p:any) => p.sequentialNumber || 0)) + 1 : 1, year: gameTime.year, ...data, createdAt: serverTimestamp() });
+      showToast("Posse Registrada!");
     },
-
     apurarDocumento: async (col: 'projects'|'decrees', docId: string, effectData: any) => {
       if(effectData.pointsPerMonth !== 0) await setDoc(doc(db, 'artifacts', APP_ID, 'effects', generateId()), { ...effectData, isPositive: effectData.pointsPerMonth > 0 });
-      await updateDoc(doc(db, 'artifacts', APP_ID, col, docId), { apurado: true }); 
-      showToast("Efeito Apurado!");
+      await updateDoc(doc(db, 'artifacts', APP_ID, col, docId), { apurado: true }); showToast("Efeito Apurado!");
     },
-
     createState: async (data: any) => {
       const initialIndicators: any = {};
       Object.entries(TAXONOMY).forEach(([macro, micros]) => { initialIndicators[macro] = {}; micros.forEach(m => initialIndicators[macro][m] = 50); });
-      await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), { name: data.name, type: data.type, macro: { populacao: Number(data.populacao), pib: Number(data.pib), aprovacao: 50, caixa: Number(data.budget) }, indicators: initialIndicators, allocatedBudget: {}, history: [] });
-      showToast("Entidade Fundada!");
+      await setDoc(doc(db, 'artifacts', APP_ID, 'states', generateId()), { name: data.name, type: data.type, macro: { populacao: Number(data.populacao), pib: Number(data.pib), aprovacao: 50, caixa: Number(data.budget) }, indicators: initialIndicators, allocatedBudget: {}, history: [] }); showToast("Entidade Fundada!");
     },
     saveTemplate: async (data: any) => { await setDoc(doc(db, 'artifacts', APP_ID, 'templates', data.id || generateId()), data); showToast("Modelo Salvo!"); },
-    deleteTemplate: async (id: string) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'templates', id)); showToast("Modelo removido."); },
+    deleteTemplate: async (id: string) => { await updateDoc(doc(db, 'artifacts', APP_ID, 'templates', id), { isArchived: true }); showToast("Modelo Arquivado."); },
     updateUser: async (userId: string, newRole: string, newJurisdiction: string, newPasta: string) => { await updateDoc(doc(db, 'artifacts', APP_ID, 'users', userId), { role: newRole, jurisdictionId: newJurisdiction || 'federal', pastaId: newPasta || null }); showToast("Jogador atualizado!"); }
   };
-  // ==========================================
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Carregando Nosso Governo...</div>;
   
@@ -486,7 +346,7 @@ export default function App() {
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
           {activeTab === 'dados' && <DashboardView states={states} usersList={usersList} activeEffects={activeEffects} />}
           {activeTab === 'executivo' && <ExecutivoView profile={profile} states={states} decrees={decrees} projects={projects} templates={templates} usersList={usersList} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
-          {activeTab === 'legislativo' && <LegislativoView profile={profile} projects={projects} liveSession={liveSession} templates={templates} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
+          {activeTab === 'legislativo' && <LegislativoView profile={profile} projects={projects} liveSession={liveSession} templates={templates} gameTime={gameTime} usersList={usersList} showToast={showToast} actions={gameActions} />}
           {activeTab === 'judiciario' && <JudiciarioView profile={profile} decisions={decisions} posses={posses} usersList={usersList} states={states} templates={templates} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
           {activeTab === 'admin' && ['admin', 'moderador'].includes(profile?.role || '') && <AdminView profile={profile} usersList={usersList} states={states} projects={projects} decrees={decrees} decisions={decisions} activeEffects={activeEffects} templates={templates} gameTime={gameTime} showToast={showToast} actions={gameActions} />}
         </div>
